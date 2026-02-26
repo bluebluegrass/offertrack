@@ -1,0 +1,35 @@
+# macOS metadata
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Local config
+.env
+.env.*
+!.env.example
+.codex/
+
+# OAuth/token files
+credentials.json
+token.json
+*.token.json
+.tokens/
+
+# Runtime outputs
+output/*
+!output/example/
+!output/example/metrics.json
+!output/example/sankey.png
+
+# Frontend artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/public/ai_sankey.png
+frontend/public/output
+
+# Logs
+*.log

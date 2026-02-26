@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: offertrack-api
+    runtime: python
+    plan: free
+    rootDir: .
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api.server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: https://offertrack.simona.life
+      - key: GOOGLE_OAUTH_CREDENTIALS_JSON
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        value: https://api.offertrack.simona.life/api/auth/google/callback
+      - key: MS_CLIENT_ID
+        sync: false
+      - key: MS_CLIENT_SECRET
+        sync: false
+      - key: MS_TENANT_ID
+        value: common
+      - key: MS_REDIRECT_URI
+        value: https://api.offertrack.simona.life/api/auth/outlook/callback
+      - key: FRONTEND_BASE_URL
+        value: https://offertrack.simona.life
+      - key: SESSION_SECRET
+        sync: false
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: SESSION_STORE_DIR
+        value: /tmp/offertrack_sessions
+
+  - type: web
+    name: offertrack-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://api.offertrack.simona.life
