@@ -1,0 +1,38 @@
+name: Keep API Awake
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping health endpoint
+        env:
+          KEEPALIVE_URL: ${{ secrets.KEEPALIVE_URL }}
+        run: |
+          set -euo pipefail
+          URL="${KEEPALIVE_URL:-https://api.offertrack.simona.life/health}"
+          echo "Pinging: ${URL}"
+
+          CURL_FLAGS=(
+            --silent
+            --show-error
+            --max-time 20
+            --retry 3
+            --retry-delay 5
+            --retry-connrefused
+            --retry-all-errors
+            -H "User-Agent: offertrack-keepalive"
+          )
+
+          if curl --help all 2>/dev/null | grep -q -- "--fail-with-body"; then
+            CURL_FLAGS+=(--fail-with-body)
+          else
+            CURL_FLAGS+=(-f)
+          fi
+
+          curl "${CURL_FLAGS[@]}" "$URL"
