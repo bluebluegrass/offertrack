@@ -15,7 +15,7 @@ jobs:
           KEEPALIVE_URL: ${{ secrets.KEEPALIVE_URL }}
         run: |
           set -euo pipefail
-          URL="${KEEPALIVE_URL:-https://api.offertrack.simona.life/health}"
+          URL="${KEEPALIVE_URL:-https://api.offertracker.simona.life/health}"
           echo "Pinging: ${URL}"
 
           CURL_FLAGS=(
