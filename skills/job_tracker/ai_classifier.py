@@ -6,13 +6,12 @@ import csv
 import json
 import os
 import re
-import urllib.error
-import urllib.request
 from collections import Counter, defaultdict
 from datetime import datetime
 from email.utils import parseaddr
 from pathlib import Path
 
+from app.utils.llm_client import llm_call
 from skills.job_tracker.types import NormalizedMessage
 
 ALLOWED_EVENT_TYPES = {"application", "interview", "rejection", "offer", "other"}
@@ -370,6 +369,37 @@ def _extract_json_object(text: str) -> dict[str, object]:
         return json.loads(match.group(0))
 
 
+def _extract_llm_text(data: dict[str, object]) -> str:
+    """Support both Responses API output and legacy chat-completions shape."""
+    output_text = data.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text
+
+    output = data.get("output")
+    if isinstance(output, list):
+        chunks: list[str] = []
+        for item in output:
+            if not isinstance(item, dict):
+                continue
+            content = item.get("content")
+            if not isinstance(content, list):
+                continue
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                text = part.get("text")
+                if isinstance(text, str):
+                    chunks.append(text)
+        if chunks:
+            return "\n".join(chunks)
+
+    return (
+        data.get("choices", [{}])[0]
+        .get("message", {})
+        .get("content", "")
+    )
+
+
 def _llm_classify_single_email(
     *,
     message: NormalizedMessage,
@@ -401,36 +431,25 @@ def _llm_classify_single_email(
     body = {
         "model": model,
         "temperature": 0,
-        "response_format": {"type": "json_object"},
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
+        "text": {"format": {"type": "json_object"}},
+        "input": [
+            {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
+            {"role": "user", "content": [{"type": "input_text", "text": user_prompt}]},
         ],
     }
-    req = urllib.request.Request(
-        url=f"{base_url.rstrip('/')}/chat/completions",
-        data=json.dumps(body).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
 
     try:
-        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="ignore")
-        raise RuntimeError(f"LLM request failed ({exc.code}): {detail}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"LLM request failed: {exc}") from exc
+        data = llm_call(
+            "gmail_classification",
+            api_key=api_key,
+            base_url=base_url,
+            timeout_sec=timeout_sec,
+            **body,
+        )
+    except RuntimeError as exc:
+        raise RuntimeError(str(exc)) from exc
 
-    content = (
-        data.get("choices", [{}])[0]
-        .get("message", {})
-        .get("content", "")
-    )
+    content = _extract_llm_text(data)
     parsed = _extract_json_object(content)
     event_type = str(parsed.get("event_type", "other")).strip().lower()
     if event_type not in ALLOWED_EVENT_TYPES:
