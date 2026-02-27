@@ -15,7 +15,7 @@ OfferTrack helps you understand your job search progress by:
 - **Web App Architecture** - FastAPI backend + React/Vite frontend
 - **AI Classification Pipeline** - Converts email signals into structured outcomes
 - **Sankey Visualization** - Clear funnel view from application to offer/rejection
-- **Production Deployment Support** - Render blueprint included
+- **Production Deployment Support** - Render blueprint and Coolify migration runbook included
 - **Automated Test Coverage** - Python tests for metrics and classification modules
 
 ## Installation
@@ -101,6 +101,12 @@ Run from this directory:
 PYTHONPATH=. pytest -q
 ```
 
+## Deployment
+- Render blueprint config: `render.yaml`
+- Existing Render notes: `DEPLOY_RENDER_GODADDY.md`
+- Render -> Coolify migration runbook: `docs/MIGRATE_RENDER_TO_COOLIFY.md`
+- Migration helper scripts: `scripts/ops/`
+
 ## Files
 - `api/` - backend server and auth/session logic
 - `frontend/` - React web application
@@ -108,6 +114,8 @@ PYTHONPATH=. pytest -q
 - `tests/` - automated tests
 - `render.yaml` - Render deployment config
 - `DEPLOY_RENDER_GODADDY.md` - deployment/domain notes
+- `docs/MIGRATE_RENDER_TO_COOLIFY.md` - migration playbook for Hetzner + Coolify
+- `scripts/ops/` - health and DNS cutover helper scripts
 
 ## Outlook Troubleshooting
 - `invalid_client`: verify `MS_CLIENT_ID`/`MS_CLIENT_SECRET` match the Entra app.
