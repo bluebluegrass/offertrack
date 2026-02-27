@@ -55,12 +55,14 @@ def _fernet() -> Fernet:
     return Fernet(key)
 
 
-def create_state(*, next_path: str = "/") -> str:
+def create_state(*, next_path: str = "/", pkce_code_verifier: str = "") -> str:
     payload = {
         "nonce": secrets.token_urlsafe(18),
         "ts": int(time.time()),
         "next_path": next_path if next_path.startswith("/") else "/",
     }
+    if pkce_code_verifier:
+        payload["pkce_code_verifier"] = pkce_code_verifier
     raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     body = _b64url_encode(raw)
     sig = _sign_text(body)

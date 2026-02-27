@@ -7,6 +7,7 @@ import binascii
 import csv
 import json
 import os
+import secrets
 import shutil
 import tempfile
 from pathlib import Path
@@ -293,10 +294,12 @@ def auth_status(request: Request) -> dict[str, str | bool]:
 
 @app.get("/api/auth/google/start")
 def auth_google_start(request: Request, next_path: str = Query(default="/")) -> RedirectResponse:
+    # Google can require PKCE for web OAuth; keep code_verifier in signed state for callback exchange.
+    pkce_code_verifier = secrets.token_urlsafe(64)
     credentials_path = _resolve_credentials_path("credentials.json")
     client_config = _load_oauth_client_config(credentials_path)
     redirect_uri = _google_redirect_uri(request)
-    oauth_state = create_state(next_path=next_path)
+    oauth_state = create_state(next_path=next_path, pkce_code_verifier=pkce_code_verifier)
 
     try:
         from google_auth_oauthlib.flow import Flow
@@ -305,6 +308,7 @@ def auth_google_start(request: Request, next_path: str = Query(default="/")) -> 
 
     flow = Flow.from_client_config(client_config, scopes=SCOPES)
     flow.redirect_uri = redirect_uri
+    flow.code_verifier = pkce_code_verifier
     auth_url, _ = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
@@ -330,7 +334,7 @@ def auth_google_callback(request: Request) -> RedirectResponse:
         )
 
     try:
-        verify_state(state)
+        state_payload = verify_state(state)
     except ValueError as exc:
         return RedirectResponse(url=_frontend_redirect_url(auth="error", message=str(exc)), status_code=302)
 
@@ -346,7 +350,12 @@ def auth_google_callback(request: Request) -> RedirectResponse:
     try:
         flow = Flow.from_client_config(client_config, scopes=SCOPES, state=state)
         flow.redirect_uri = redirect_uri
-        flow.fetch_token(code=code)
+        pkce_code_verifier = state_payload.get("pkce_code_verifier", "")
+        fetch_kwargs = {"code": code}
+        if isinstance(pkce_code_verifier, str) and pkce_code_verifier:
+            flow.code_verifier = pkce_code_verifier
+            fetch_kwargs["code_verifier"] = pkce_code_verifier
+        flow.fetch_token(**fetch_kwargs)
         creds = flow.credentials
         token_payload = json.loads(creds.to_json())
     except Exception as exc:  # noqa: BLE001
