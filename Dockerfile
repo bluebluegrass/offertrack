@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY api ./api
 COPY skills ./skills
+COPY app ./app
 
 USER app
 
