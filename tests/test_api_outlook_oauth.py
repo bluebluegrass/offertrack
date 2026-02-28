@@ -145,4 +145,4 @@ def test_outlook_callback_success_sets_session_cookie(monkeypatch):
         "provider": "outlook",
         "token_json": {"access_token": "token-1", "refresh_token": "refresh-1"},
     }
-    assert "offertrack_session=signed-sid-123" in response.headers["set-cookie"]
+    assert "offertracker_session=signed-sid-123" in response.headers["set-cookie"]

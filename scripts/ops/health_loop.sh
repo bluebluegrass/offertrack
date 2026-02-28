@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-URL="${1:-https://api.offertrack.simona.life/health}"
+URL="${1:-https://api.offertracker.simona.life/health}"
 INTERVAL="${2:-60}"
 
 echo "Health loop started for: ${URL} (interval: ${INTERVAL}s)"

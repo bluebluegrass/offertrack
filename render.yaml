@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: offertrack-api
+    name: offertracker-api
     runtime: python
     plan: free
     rootDir: .
@@ -10,11 +10,11 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: ALLOWED_ORIGINS
-        value: https://offertrack.simona.life
+        value: https://offertracker.simona.life
       - key: GOOGLE_OAUTH_CREDENTIALS_JSON
         sync: false
       - key: GOOGLE_REDIRECT_URI
-        value: https://api.offertrack.simona.life/api/auth/google/callback
+        value: https://api.offertracker.simona.life/api/auth/google/callback
       - key: MS_CLIENT_ID
         sync: false
       - key: MS_CLIENT_SECRET
@@ -22,18 +22,18 @@ services:
       - key: MS_TENANT_ID
         value: common
       - key: MS_REDIRECT_URI
-        value: https://api.offertrack.simona.life/api/auth/outlook/callback
+        value: https://api.offertracker.simona.life/api/auth/outlook/callback
       - key: FRONTEND_BASE_URL
-        value: https://offertrack.simona.life
+        value: https://offertracker.simona.life
       - key: SESSION_SECRET
         sync: false
       - key: TOKEN_ENCRYPTION_KEY
         sync: false
       - key: SESSION_STORE_DIR
-        value: /tmp/offertrack_sessions
+        value: /tmp/offertracker_sessions
 
   - type: web
-    name: offertrack-web
+    name: offertracker-web
     runtime: static
     rootDir: frontend
     buildCommand: npm ci && npm run build
@@ -44,4 +44,4 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_BASE_URL
-        value: https://api.offertrack.simona.life
+        value: https://api.offertracker.simona.life

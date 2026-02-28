@@ -1,4 +1,4 @@
-# OfferTrack Migration: Render -> Hetzner VPS + Coolify (Zero-Downtime)
+# OfferTracker Migration: Render -> Hetzner VPS + Coolify (Zero-Downtime)
 
 This playbook migrates only the FastAPI API to Coolify on a Hetzner VPS while keeping Render live for rollback.
 
@@ -55,7 +55,7 @@ Create one server in Hetzner Cloud:
 - Volume: default disk is fine to start
 - Network: public IPv4 enabled
 - SSH key: your local public key
-- Name: `offertrack-coolify-01`
+- Name: `offertracker-coolify-01`
 
 After server creation, connect as root:
 
@@ -140,7 +140,7 @@ Expected: returns `<VPS_IP>`.
 In Coolify UI:
 
 1. Add GitHub source and authorize your repo.
-2. Create project `offertrack`.
+2. Create project `offertracker`.
 3. Create application from repo branch `main`.
 4. Build pack type: `Dockerfile`.
 5. Exposed port: `8080`.
@@ -164,11 +164,11 @@ Set environment variables (names match Render):
 
 Recommended staging values:
 
-- `ALLOWED_ORIGINS=https://offertrack.simona.life`
+- `ALLOWED_ORIGINS=https://offertracker.simona.life`
 - `GOOGLE_REDIRECT_URI=https://api-staging.offertracker.simona.life/api/auth/google/callback`
 - `MS_REDIRECT_URI=https://api-staging.offertracker.simona.life/api/auth/outlook/callback`
-- `FRONTEND_BASE_URL=https://offertrack.simona.life`
-- `SESSION_STORE_DIR=/tmp/offertrack_sessions`
+- `FRONTEND_BASE_URL=https://offertracker.simona.life`
+- `SESSION_STORE_DIR=/tmp/offertracker_sessions`
 
 Deploy app.
 
@@ -191,25 +191,25 @@ ssh simona@<VPS_IP> "docker ps --format 'table {{.Names}}\t{{.Status}}'"
 Record current Render DNS target before changing anything:
 
 ```bash
-dig +short api.offertrack.simona.life
-dig api.offertrack.simona.life CNAME +short
+dig +short api.offertracker.simona.life
+dig api.offertracker.simona.life CNAME +short
 ```
 
 Add production domain in same Coolify app:
 
-- `api.offertrack.simona.life`
+- `api.offertracker.simona.life`
 
 Verification before DNS switch:
 
 ```bash
-curl -i http://<VPS_IP>/health -H 'Host: api.offertrack.simona.life'
+curl -i http://<VPS_IP>/health -H 'Host: api.offertracker.simona.life'
 ```
 
 Expected: app responds with health payload.
 
 ## Phase 7: DNS cutover (safe + reversible)
 
-Change DNS record for `api.offertrack.simona.life` to VPS.
+Change DNS record for `api.offertracker.simona.life` to VPS.
 
 - If currently CNAME to Render, replace with `A -> <VPS_IP>`.
 - Set TTL to `60` or `300`.
@@ -217,8 +217,8 @@ Change DNS record for `api.offertrack.simona.life` to VPS.
 Verification:
 
 ```bash
-bash scripts/ops/wait_for_dns.sh api.offertrack.simona.life <VPS_IP> 30 10
-curl -i https://api.offertrack.simona.life/health
+bash scripts/ops/wait_for_dns.sh api.offertracker.simona.life <VPS_IP> 30 10
+curl -i https://api.offertracker.simona.life/health
 ```
 
 Expected:
@@ -233,16 +233,16 @@ Keep Render service up and unchanged for 48 hours.
 Continuous health monitor (local):
 
 ```bash
-bash scripts/ops/health_loop.sh https://api.offertrack.simona.life/health 60
+bash scripts/ops/health_loop.sh https://api.offertracker.simona.life/health 60
 ```
 
 If incident happens, rollback:
 
-1. Restore DNS for `api.offertrack.simona.life` back to previous Render target.
+1. Restore DNS for `api.offertracker.simona.life` back to previous Render target.
 2. Verify:
 
 ```bash
-curl -i https://api.offertrack.simona.life/health
+curl -i https://api.offertracker.simona.life/health
 ```
 
 3. Keep Coolify running for diagnostics.

@@ -14,7 +14,7 @@ from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 
-COOKIE_NAME = "offertrack_session"
+COOKIE_NAME = "offertracker_session"
 STATE_TTL_SECONDS = 10 * 60
 SESSION_TTL_SECONDS = 14 * 24 * 60 * 60
 
@@ -89,7 +89,7 @@ def verify_state(state: str) -> dict[str, Any]:
 
 
 def _session_store_dir() -> Path:
-    root = Path(os.getenv("SESSION_STORE_DIR", "/tmp/offertrack_sessions")).expanduser().resolve()
+    root = Path(os.getenv("SESSION_STORE_DIR", "/tmp/offertracker_sessions")).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
     return root
 

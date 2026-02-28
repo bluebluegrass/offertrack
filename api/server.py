@@ -117,7 +117,7 @@ def _resolve_credentials_path(requested_path: str) -> str:
                 status_code=500,
                 detail="Google credentials JSON must contain 'installed' or 'web'",
             )
-        temp_dir = Path(os.getenv("GOOGLE_OAUTH_TMP_DIR", "/tmp/offertrack")).expanduser().resolve()
+        temp_dir = Path(os.getenv("GOOGLE_OAUTH_TMP_DIR", "/tmp/offertracker")).expanduser().resolve()
         temp_dir.mkdir(parents=True, exist_ok=True)
         out = temp_dir / "credentials.json"
         out.write_text(json.dumps(parsed), encoding="utf-8")
@@ -477,7 +477,7 @@ def run_scan(payload: ScanRequest, request: Request) -> dict[str, object]:
     runtime_base = (
         os.getenv("OFFERTRACK_RUNTIME_DIR", "").strip()
         or os.getenv("GMAIL_RUNTIME_DIR", "").strip()
-        or "/tmp/offertrack_runtime"
+        or "/tmp/offertracker_runtime"
     )
     runtime_root = Path(runtime_base).expanduser().resolve() / session_id
     token_dir = runtime_root / "tokens"

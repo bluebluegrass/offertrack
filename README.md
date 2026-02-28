@@ -1,6 +1,6 @@
-# OfferTrack
+# OfferTracker
 
-OfferTrack is a Gmail-powered job search tracker web app.
+OfferTracker is a Gmail-powered job search tracker web app.
 
 ## Repository Layout
 
