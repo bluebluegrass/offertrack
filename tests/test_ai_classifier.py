@@ -1,4 +1,5 @@
 from skills.job_tracker.ai_classifier import (
+    _is_non_employer_logistics_email,
     _is_non_employer_tool_email,
     build_application_rows,
     build_ai_result_summary,
@@ -507,6 +508,22 @@ def test_non_employer_tool_marketing_email_is_filtered():
                 "Head to any job saved in your Teal Job Tracker and click Practice Interview."
             ),
             "tealhq",
+        )
+        is True
+    )
+
+
+def test_non_employer_logistics_email_is_filtered():
+    assert (
+        _is_non_employer_logistics_email(
+            "system@sirva.com",
+            "Expense Report: Candidate Per Diem - Processed",
+            (
+                "Your Expense Report, Candidate Per Diem has been audited by SIRVA. "
+                "Total amount Approved:150.00 USD. "
+                "You will receive a separate notification when the funds have been issued."
+            ),
+            "sirva",
         )
         is True
     )

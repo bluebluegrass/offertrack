@@ -112,6 +112,15 @@ NON_EMPLOYER_TOOL_MARKETING_TERMS = (
     "target roles",
     "build confidence",
 )
+NON_EMPLOYER_LOGISTICS_ROOTS = {"sirva"}
+NON_EMPLOYER_LOGISTICS_TERMS = (
+    "expense report",
+    "candidate per diem",
+    "per diem",
+    "amount approved",
+    "funds have been issued",
+    "audited by sirva",
+)
 
 
 def _normalize_text(value: str) -> str:
@@ -266,6 +275,14 @@ def _is_non_employer_tool_email(sender_addr: str, subject: str, body: str = "", 
         return False
     text = _normalize_text(" ".join([subject or "", body or "", company or ""]))
     return any(term in text for term in NON_EMPLOYER_TOOL_MARKETING_TERMS)
+
+
+def _is_non_employer_logistics_email(sender_addr: str, subject: str, body: str = "", company: str = "") -> bool:
+    root = _domain_root_from_email(sender_addr)
+    if root not in NON_EMPLOYER_LOGISTICS_ROOTS:
+        return False
+    text = _normalize_text(" ".join([subject or "", body or "", company or ""]))
+    return any(term in text for term in NON_EMPLOYER_LOGISTICS_TERMS)
 
 
 def _canonical_company_name(
@@ -499,6 +516,10 @@ def _llm_classify_single_email(
         event_type = "other"
         company = ""
     elif _is_non_employer_tool_email(sender_address, message.subject, message.body or message.snippet, company):
+        is_job_related = False
+        event_type = "other"
+        company = ""
+    elif _is_non_employer_logistics_email(sender_address, message.subject, message.body or message.snippet, company):
         is_job_related = False
         event_type = "other"
         company = ""

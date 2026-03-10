@@ -51,6 +51,20 @@ def test_profile_purge_is_not_an_interview():
     assert not decision.events
 
 
+def test_candidate_per_diem_is_not_an_interview():
+    msg = _msg(
+        "Expense Report: Candidate Per Diem - Processed",
+        (
+            "Your Expense Report, Candidate Per Diem has been audited by SIRVA. "
+            "Total amount Approved:150.00 USD"
+        ),
+        sender="system@sirva.com",
+    )
+    decision = classify_message_with_meta(msg)
+    assert decision.ignored is True
+    assert not decision.events
+
+
 def test_workday_style_thank_you_but_rejected_snippet_maps_to_rejection():
     msg = _msg(
         "Update on your application for Senior Analytics Engineer",
