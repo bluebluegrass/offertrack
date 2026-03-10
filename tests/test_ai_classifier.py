@@ -1,4 +1,8 @@
-from skills.job_tracker.ai_classifier import build_application_rows, build_ai_result_summary
+from skills.job_tracker.ai_classifier import (
+    _is_non_employer_tool_email,
+    build_application_rows,
+    build_ai_result_summary,
+)
 
 
 def test_build_application_rows_groups_by_company():
@@ -457,3 +461,52 @@ def test_build_ai_result_summary_does_not_count_generic_future_call_language_as_
     assert summary["rejections_total"] == 1
     assert summary["rejections_with_interview"] == 0
     assert summary["rejections_without_interview"] == 1
+
+
+def test_build_application_rows_keeps_interview_when_full_email_had_meeting_signal():
+    rows = [
+        {
+            "gmail_message_id": "m1",
+            "thread_id": "tcatawiki",
+            "date": "2026-03-01T10:00:00+00:00",
+            "is_job_related": "true",
+            "company": "catawiki",
+            "position": "software engineer data engineering",
+            "event_type": "application",
+            "status": "Applied",
+            "subject": "Application received",
+            "from_email_address": "jobs@catawiki.com",
+        },
+        {
+            "gmail_message_id": "m2",
+            "thread_id": "tcatawiki",
+            "date": "2026-03-10T09:00:00+00:00",
+            "is_job_related": "true",
+            "company": "catawiki",
+            "position": "software engineer data engineering",
+            "event_type": "interview",
+            "status": "Interviewing",
+            "subject": "COnfimration Remote Interview Catawiki",
+            "from_email_address": "recruiting@catawiki.com",
+            "meeting_signal": "true",
+        },
+    ]
+
+    app_rows = build_application_rows(rows)
+    assert len(app_rows) == 1
+    assert app_rows[0]["current_status"] == "Interviewing"
+
+
+def test_non_employer_tool_marketing_email_is_filtered():
+    assert (
+        _is_non_employer_tool_email(
+            "hello@tealhq.com",
+            "AI interview prep & tracking",
+            (
+                "Get personalized AI interviews tailored to your target roles, with instant feedback. "
+                "Head to any job saved in your Teal Job Tracker and click Practice Interview."
+            ),
+            "tealhq",
+        )
+        is True
+    )

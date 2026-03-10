@@ -102,6 +102,16 @@ INTERVIEW_WEAK_FUTURE_TERMS = (
     "we may schedule",
     "if there is strong alignment",
 )
+NON_EMPLOYER_TOOL_ROOTS = {"tealhq"}
+NON_EMPLOYER_TOOL_MARKETING_TERMS = (
+    "ai interview prep",
+    "practice interview",
+    "practice interviews",
+    "teal job tracker",
+    "instant feedback",
+    "target roles",
+    "build confidence",
+)
 
 
 def _normalize_text(value: str) -> str:
@@ -240,9 +250,22 @@ def _effective_event_type(row: dict[str, str]) -> str:
     event_type = (row.get("event_type", "") or "").strip().lower()
     if event_type != "interview":
         return event_type
+    meeting_signal = (row.get("meeting_signal", "") or "").strip().lower()
+    if meeting_signal in {"true", "1", "yes"}:
+        return "interview"
+    if meeting_signal in {"false", "0", "no"}:
+        return "other"
     if _has_meeting_invite_signal(row.get("subject", ""), row.get("body", "")):
         return "interview"
     return "other"
+
+
+def _is_non_employer_tool_email(sender_addr: str, subject: str, body: str = "", company: str = "") -> bool:
+    root = _domain_root_from_email(sender_addr)
+    if root not in NON_EMPLOYER_TOOL_ROOTS:
+        return False
+    text = _normalize_text(" ".join([subject or "", body or "", company or ""]))
+    return any(term in text for term in NON_EMPLOYER_TOOL_MARKETING_TERMS)
 
 
 def _canonical_company_name(
@@ -470,11 +493,16 @@ def _llm_classify_single_email(
         subject=message.subject,
         body=message.body or message.snippet,
     )
+    meeting_signal = _has_meeting_invite_signal(message.subject, message.body or message.snippet)
     if _is_calendar_rsvp_noise(sender_address, message.subject):
         is_job_related = False
         event_type = "other"
         company = ""
-    elif event_type == "interview" and not _has_meeting_invite_signal(message.subject, message.body or message.snippet):
+    elif _is_non_employer_tool_email(sender_address, message.subject, message.body or message.snippet, company):
+        is_job_related = False
+        event_type = "other"
+        company = ""
+    elif event_type == "interview" and not meeting_signal:
         event_type = "other"
     return {
         "gmail_message_id": message.id,
@@ -489,6 +517,7 @@ def _llm_classify_single_email(
         "event_type": event_type,
         "status": STATUS_BY_EVENT.get(event_type, "Applied"),
         "confidence": f"{conf:.2f}",
+        "meeting_signal": "true" if meeting_signal else "false",
     }
 
 
@@ -635,6 +664,7 @@ def write_ai_message_classification_csv(path: str, rows: list[dict[str, str]]) -
         "event_type",
         "status",
         "confidence",
+        "meeting_signal",
     ]
     with out.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
