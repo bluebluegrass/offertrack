@@ -32,6 +32,7 @@ type MessageRow = {
 
 type CsvRow = Record<string, string>
 type MailProvider = 'gmail' | 'outlook'
+type DashboardMode = 'empty' | 'demo' | 'real'
 type ScanApiPayload = {
   base_path?: string
   detail?: string
@@ -403,6 +404,7 @@ async function loadRunData(startDate: string, endDate: string, email: string, pr
 }
 
 export default function App() {
+  const [dashboardMode, setDashboardMode] = useState<DashboardMode>('empty')
   const [mailConnected, setMailConnected] = useState(false)
   const [connectedProvider, setConnectedProvider] = useState<MailProvider | null>(null)
   const [selectedProvider, setSelectedProvider] = useState<MailProvider>('gmail')
@@ -417,16 +419,16 @@ export default function App() {
   const [endDate, setEndDate] = useState(() => toIsoDateLocal(new Date()))
   const [isRunning, setIsRunning] = useState(false)
   const [connectionStatusText, setConnectionStatusText] = useState('Checking mailbox connection...')
-  const [scanStatusText, setScanStatusText] = useState('Showing demo data. Run scan to replace it.')
+  const [scanStatusText, setScanStatusText] = useState('Connect an inbox or view demo data to get started.')
   const [scanStatusTone, setScanStatusTone] = useState<'idle' | 'running' | 'success' | 'error'>('idle')
-  const [hasRunResults, setHasRunResults] = useState(true)
+  const [hasRunResults, setHasRunResults] = useState(false)
 
-  const [summary, setSummary] = useState<Summary>(DEMO_SUMMARY)
-  const [applicationRows, setApplicationRows] = useState<ApplicationRow[]>(sortApplicationRows(DEMO_APPLICATION_ROWS))
-  const [messageRows, setMessageRows] = useState<MessageRow[]>(DEMO_MESSAGE_ROWS)
+  const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY)
+  const [applicationRows, setApplicationRows] = useState<ApplicationRow[]>([])
+  const [messageRows, setMessageRows] = useState<MessageRow[]>([])
 
   const envSankeyImageSrc = import.meta.env.VITE_SANKEY_IMAGE_SRC
-  const [sankeyImageSrc, setSankeyImageSrc] = useState(envSankeyImageSrc ?? DEMO_SANKEY_IMAGE_SRC)
+  const [sankeyImageSrc, setSankeyImageSrc] = useState(envSankeyImageSrc ?? '')
   const todayIso = useMemo(() => toIsoDateLocal(new Date()), [])
   const isActiveConnection = mailConnected
   const activeProvider = connectedProvider ?? 'gmail'
@@ -438,6 +440,28 @@ export default function App() {
     if (!hasRunResults) return 'Run Scan'
     return 'Rerun Scan'
   }, [isRunning, hasRunResults])
+
+  const enterDemoMode = () => {
+    setDashboardMode('demo')
+    setSummary(DEMO_SUMMARY)
+    setApplicationRows(sortApplicationRows(DEMO_APPLICATION_ROWS))
+    setMessageRows(DEMO_MESSAGE_ROWS)
+    setSankeyImageSrc(envSankeyImageSrc ?? DEMO_SANKEY_IMAGE_SRC)
+    setHasRunResults(true)
+    setScanStatusTone('idle')
+    setScanStatusText('Showing sample data. Connect an inbox and run a scan to replace it.')
+  }
+
+  const exitDemoMode = () => {
+    setDashboardMode('empty')
+    setSummary(EMPTY_SUMMARY)
+    setApplicationRows([])
+    setMessageRows([])
+    setSankeyImageSrc(envSankeyImageSrc ?? '')
+    setHasRunResults(false)
+    setScanStatusTone('idle')
+    setScanStatusText('Connect an inbox or view demo data to get started.')
+  }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -593,14 +617,16 @@ export default function App() {
       setMessageRows(messageRowsFromApi)
       setSankeyImageSrc(envSankeyImageSrc ?? scanPayload.sankey_image_data_url ?? '')
       setHasRunResults(true)
+      setDashboardMode('real')
       setScanStatusTone('success')
       setScanStatusText(`Run complete (${startDate} to ${endDate}).`)
     } catch (error) {
+      setDashboardMode('empty')
       setHasRunResults(false)
       setSummary(EMPTY_SUMMARY)
       setApplicationRows([])
       setMessageRows([])
-      setSankeyImageSrc(envSankeyImageSrc ?? DEMO_SANKEY_IMAGE_SRC)
+      setSankeyImageSrc(envSankeyImageSrc ?? '')
       setScanStatusTone('error')
       setScanStatusText(error instanceof Error ? error.message : 'Run failed while loading results.')
     } finally {
@@ -618,9 +644,18 @@ export default function App() {
               Offer<span className="warm-brand">Tracker</span>
             </h1>
           </div>
-          <p className="warm-copy mt-2 max-w-2xl text-sm leading-6 sm:text-base">
-            Connect Gmail or Outlook, scan a date range, and review your job search results.
-          </p>
+          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="warm-copy max-w-2xl text-sm leading-6 sm:text-base">
+              Connect Gmail or Outlook, scan a date range, and review your job search results.
+            </p>
+            <button
+              type="button"
+              onClick={enterDemoMode}
+              className="warm-pill inline-flex rounded-full px-3 py-1.5 text-xs font-medium text-[color:var(--accent-strong)]"
+            >
+              View Demo
+            </button>
+          </div>
         </header>
 
         <div className="space-y-6">
@@ -758,13 +793,44 @@ export default function App() {
           </section>
           </div>
 
-          <ResultsAndImageSection
-            summary={summary}
-            applicationRows={applicationRows}
-            messageRows={messageRows}
-            hasResults={hasRunResults}
-            sankeyImageSrc={sankeyImageSrc}
-          />
+          {!hasRunResults ? (
+            <section className="warm-empty rounded-xl border-2 border-dashed p-8 text-center sm:p-10">
+              <p className="warm-title text-xl font-semibold tracking-tight sm:text-2xl">
+                Connect your inbox to see your real job search pipeline.
+              </p>
+              <p className="warm-copy mx-auto mt-3 max-w-2xl text-sm leading-7 sm:text-base">
+                OfferTracker scans job-related emails, builds your funnel, and shows the next step for each application.
+              </p>
+              <div className="mt-5 flex flex-wrap justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={onConnect}
+                  disabled={isConnecting}
+                  className="warm-button inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {isConnecting ? `Connecting ${providerLabel(selectedProvider)}...` : `Connect ${providerLabel(selectedProvider)}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={enterDemoMode}
+                  className="warm-pill inline-flex min-h-[48px] items-center justify-center rounded-xl px-4 py-3 text-sm font-medium text-[color:var(--accent-strong)]"
+                >
+                  View Demo
+                </button>
+              </div>
+            </section>
+          ) : (
+            <ResultsAndImageSection
+              summary={summary}
+              applicationRows={applicationRows}
+              messageRows={messageRows}
+              hasResults={hasRunResults}
+              sankeyImageSrc={sankeyImageSrc}
+              isDemoMode={dashboardMode === 'demo'}
+              onExitDemoMode={dashboardMode === 'demo' ? exitDemoMode : undefined}
+            />
+          )}
         </div>
 
         <footer className="warm-divider mt-10 border-t pt-5">

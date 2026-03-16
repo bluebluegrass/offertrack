@@ -35,6 +35,8 @@ type Props = {
   messageRows: MessageRow[]
   hasResults: boolean
   sankeyImageSrc: string
+  isDemoMode?: boolean
+  onExitDemoMode?: () => void
 }
 
 type RowAction = {
@@ -529,6 +531,8 @@ export default function ResultsAndImageSection({
   messageRows,
   hasResults,
   sankeyImageSrc,
+  isDemoMode = false,
+  onExitDemoMode,
 }: Props) {
   const [open, setOpen] = useState(false)
   const [imageMissing, setImageMissing] = useState(false)
@@ -554,6 +558,28 @@ export default function ResultsAndImageSection({
             </div>
           ) : (
             <div className="space-y-4">
+              {isDemoMode ? (
+                <div className="warm-panel-soft rounded-xl border px-4 py-3 sm:px-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="warm-kicker text-[11px] font-medium uppercase tracking-[0.18em]">Demo Mode</p>
+                      <p className="warm-copy mt-1 text-sm">
+                        Showing sample data until you connect an inbox and run your first scan.
+                      </p>
+                    </div>
+                    {onExitDemoMode ? (
+                      <button
+                        type="button"
+                        onClick={onExitDemoMode}
+                        className="warm-pill inline-flex rounded-full px-3 py-1.5 text-xs font-medium text-[color:var(--accent-strong)]"
+                      >
+                        Connect Inbox
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <StatCard label="Applications" value={summary.applications} />
                 <StatCard label="Interviews" value={summary.interviews} />
