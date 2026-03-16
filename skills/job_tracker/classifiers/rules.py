@@ -30,6 +30,19 @@ ATS_HINTS = {
     "icims.com",
 }
 
+NON_EMPLOYER_TOOL_DOMAINS = {
+    "tealhq.com",
+}
+
+NON_EMPLOYER_TOOL_MARKETING_PHRASES = [
+    "track the status of every job application",
+    "stay on top of every opportunity",
+    "keep every opportunity organized",
+    "clear visibility into next steps and follow ups",
+    "clear visibility into next steps",
+    "missed connections",
+]
+
 INTERVIEW_ANCHOR_PHRASES = [
     "interview",
     "conversation",
@@ -74,6 +87,8 @@ INTERVIEW_NEGATIVE_PHRASES = [
 ]
 
 ROLE_PATTERNS = [
+    r"^[^:\n]+:\s*([^\n@|]+?)\s*@\s*[A-Z][A-Za-z0-9& .'-]{1,64}",
+    r"application (?:for|to) (.+?)\s+at\s+[A-Z][A-Za-z0-9& .'-]{1,64}",
     r"for (?:the )?role of ([^\n,|]+)",
     r"for (?:the )?position of ([^\n,|]+)",
     r"position[:\s-]+([^\n|]+)",
@@ -112,12 +127,15 @@ REJECTION_DECISION_PATTERNS = [
     r"not progress your application further",
     r"will not be progressing your application",
     r"not be taking your application forward",
+    r"won'?t be able to proceed further with your candidacy",
+    r"will not be able to proceed further with your candidacy",
     r"we have decided not to progress your application further on this occasion",
     r"journey has come to an end",
     r"candidate rejection",
 ]
 REJECTION_CONTEXT_PATTERNS = [r"after careful consideration", r"unfortunately"]
 REJECTION_VERB_PATTERNS = [
+    r"did not pass",
     r"not moving forward",
     r"regret to inform",
     r"unsuccessful",
@@ -128,6 +146,7 @@ REJECTION_VERB_PATTERNS = [
     r"not be taking .* forward",
 ]
 REJECTION_CORE_PATTERNS = REJECTION_DECISION_PATTERNS + [
+    r"did not pass",
     r"not moving forward",
     r"regret to inform",
     r"unsuccessful",
@@ -137,13 +156,14 @@ REJECTION_CORE_PATTERNS = REJECTION_DECISION_PATTERNS + [
 ]
 
 WITHDRAWN_PATTERNS = [r"withdraw(n)? (my )?application", r"withdrawal", r"withdrawn"]
-OA_PATTERNS = [r"\boa\b", r"online assessment", r"take-home", r"hackerrank", r"codility", r"assessment"]
+OA_PATTERNS = [r"\boa\b", r"online assessment", r"take-home", r"hackerrank", r"codility", r"assessment", r"sql test"]
 ROUND_UPDATE_PATTERNS = [r"round\s*[1-4]", r"final round", r"panel interview"]
 STATUS_UPDATE_PATTERNS = [r"application update", r"status update", r"update on your application"]
 APPLICATION_RECEIVED_PATTERNS = [
     r"thanks for applying",
     r"thank you for applying",
     r"application received",
+    r"received your application",
     r"application confirmation",
     r"regarding your application",
     r"update on your application",
@@ -217,13 +237,40 @@ def get_application_key_info(msg: NormalizedMessage) -> ApplicationKeyInfo:
     sender_domain = _extract_domain(msg.from_email)
     role, role_source, role_conf = _extract_role_meta(msg.subject, msg.snippet, sender_domain)
     extracted_company_domain, company_domain_source = _extract_company_domain_meta(msg.subject, msg.snippet, sender_domain)
+    text_company_name = _extract_company_name_from_text(msg.subject, msg.snippet)
     company_name = _company_name_from_domain(extracted_company_domain) if extracted_company_domain else ""
-    if not company_name and company_domain_source == "ats_template":
-        company_name = _extract_company_name_from_text(msg.subject, msg.snippet)
+    if text_company_name and (
+        company_domain_source == "ats_template"
+        or not company_name
+        or (company_name and text_company_name != company_name)
+    ):
+        company_name = text_company_name
     if not company_name and sender_domain:
         company_name = _company_name_from_domain(sender_domain)
 
-    # Keep key generation behavior stable: sender domain + role preferred.
+    # Prefer explicit company names from subject/body over intermediary sender domains.
+    if company_name and role:
+        company_key = _norm_text(company_name)
+        sender_key = _company_name_from_domain(sender_domain)
+        prefer_name_role = (
+            company_domain_source == "ats_template"
+            or sender_domain in ATS_HINTS
+            or any(h in sender_domain for h in ATS_HINTS)
+            or (sender_key and company_key and sender_key != company_key)
+        )
+        if prefer_name_role:
+            return ApplicationKeyInfo(
+                application_key=_norm_text(f"{company_name} {role}"),
+                key_source="name_role",
+                company_domain=extracted_company_domain,
+                company_domain_source=company_domain_source,
+                company_name=company_name,
+                role_title=role,
+                role_title_source=role_source,
+                role_title_confidence=role_conf,
+            )
+
+    # Keep key generation behavior stable for non-intermediary employer domains.
     if sender_domain and role and sender_domain not in FREE_DOMAINS:
         return ApplicationKeyInfo(
             application_key=_norm_text(f"{sender_domain} {role}"),
@@ -295,6 +342,18 @@ def _is_calendar_or_survey_noise(msg: NormalizedMessage) -> tuple[bool, str]:
         "accepted:" in subject or "reminder:" in subject or "calendar" in snippet or "invitation" in snippet
     ):
         return True, "gmail_calendar_noise"
+
+    return False, ""
+
+
+def _is_non_employer_tool_noise(msg: NormalizedMessage) -> tuple[bool, str]:
+    domain = _extract_domain(msg.from_email)
+    if domain not in NON_EMPLOYER_TOOL_DOMAINS:
+        return False, ""
+
+    text = _norm_text(f"{msg.subject} {msg.snippet} {msg.body}")
+    if any(phrase in text for phrase in NON_EMPLOYER_TOOL_MARKETING_PHRASES):
+        return True, "non_employer_tool_marketing"
 
     return False, ""
 
@@ -385,6 +444,16 @@ def classify_message_with_meta(msg: NormalizedMessage) -> ClassificationDecision
             ignore_reason=reason,
             application_key=application_key,
             rule_id=reason_to_rule.get(reason, "ignore:unknown"),
+        )
+
+    ignored, reason = _is_non_employer_tool_noise(msg)
+    if ignored:
+        return ClassificationDecision(
+            events=[],
+            ignored=True,
+            ignore_reason=reason,
+            application_key=application_key,
+            rule_id="ignore:non_employer_tool_marketing",
         )
 
     text = f"{msg.subject} {msg.snippet} {msg.from_email}"

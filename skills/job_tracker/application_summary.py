@@ -73,6 +73,8 @@ def _fallback_app_id(row: SummaryMessageRow) -> str:
 
 
 def _application_id(row: SummaryMessageRow) -> str:
+    if row.role_title_confidence >= 0.6 and row.application_key:
+        return f"key:{_normalize_text(row.application_key)}"
     if row.thread_id:
         return f"thread:{row.thread_id}"
     return _fallback_app_id(row)
@@ -128,6 +130,43 @@ def build_application_summary_rows(messages: list[SummaryMessageRow], events: li
             thread_id = str(ev.evidence.get("thread_id", "")).strip()
             app_id = f"thread:{thread_id}" if thread_id else f"key:{_normalize_text(ev.application_key)}"
         by_app_events[app_id].append(ev)
+
+    # Merge role-less follow-up threads into the sole role-bearing application for the same company.
+    def _primary_company(app_id: str) -> str:
+        msgs = by_app_messages.get(app_id, [])
+        names = [m.extracted_company_name for m in msgs if m.extracted_company_name]
+        if names:
+            return Counter(names).most_common(1)[0][0]
+        domains = [m.extracted_company_domain for m in msgs if m.extracted_company_domain]
+        if domains:
+            parts = domains[0].split(".")
+            return parts[-2] if len(parts) >= 2 else domains[0]
+        from_domains = [m.from_domain for m in msgs if m.from_domain]
+        if from_domains:
+            parts = from_domains[0].split(".")
+            return parts[-2] if len(parts) >= 2 else from_domains[0]
+        return ""
+
+    candidate_by_company: dict[str, list[str]] = defaultdict(list)
+    for app_id, msgs in by_app_messages.items():
+        if any(m.role_title and m.role_title_confidence >= 0.6 for m in msgs):
+            company = _primary_company(app_id)
+            if company:
+                candidate_by_company[company].append(app_id)
+
+    for app_id in list(by_app_messages.keys()):
+        msgs = by_app_messages.get(app_id, [])
+        if not msgs or any(m.role_title and m.role_title_confidence >= 0.6 for m in msgs):
+            continue
+        company = _primary_company(app_id)
+        candidates = candidate_by_company.get(company, [])
+        if len(candidates) != 1 or candidates[0] == app_id:
+            continue
+        target = candidates[0]
+        by_app_messages[target].extend(msgs)
+        by_app_events[target].extend(by_app_events.get(app_id, []))
+        del by_app_messages[app_id]
+        by_app_events.pop(app_id, None)
 
     rows: list[dict[str, str]] = []
     for app_id in sorted(set(by_app_messages.keys()) | set(by_app_events.keys())):

@@ -42,6 +42,7 @@ type Props = {
 type RowAction = {
   label: string
   tone: 'primary' | 'secondary' | 'muted'
+  disabled?: boolean
 }
 
 type FollowUpDraft = {
@@ -70,6 +71,7 @@ type ApplicationDetailData = {
   followUpDraft: FollowUpDraft | null
   contactTask: ContactTask | null
   companyDomain: string
+  isCold: boolean
 }
 
 const statusPillClass: Record<Status, string> = {
@@ -122,10 +124,12 @@ function MobileApplicationCard({
   row,
   actions,
   detail,
+  onMarkCold,
 }: {
   row: ApplicationRow
   actions: RowAction[]
   detail: ApplicationDetailData
+  onMarkCold?: () => void
 }) {
   const [open, setOpen] = useState(false)
 
@@ -158,13 +162,15 @@ function MobileApplicationCard({
                 <button
                   key={action.label}
                   type="button"
+                  disabled={action.disabled}
+                  onClick={action.label === 'Mark Cold' ? onMarkCold : undefined}
                   className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                     action.tone === 'primary'
                       ? 'warm-button text-white'
                       : action.tone === 'secondary'
                         ? 'warm-pill text-[color:var(--accent-strong)]'
                         : 'warm-pill-neutral'
-                  }`}
+                  } ${action.disabled ? 'cursor-default opacity-70' : ''}`}
                 >
                   {action.label}
                 </button>
@@ -287,6 +293,14 @@ function buildLinkedInPeopleSearchQuery(company: string, titleHint: string): str
 }
 
 function getRowActions(row: ApplicationRow, latestMessageByCompany: Map<string, MessageRow>): RowAction[] {
+  return getRowActionsWithState(row, latestMessageByCompany, false)
+}
+
+function getRowActionsWithState(
+  row: ApplicationRow,
+  latestMessageByCompany: Map<string, MessageRow>,
+  isCold: boolean,
+): RowAction[] {
   const senderRoute = classifySenderRoute(latestMessageByCompany.get(row.company)?.fromEmail || '')
 
   if (row.currentStatus === 'Interviewing') {
@@ -296,6 +310,9 @@ function getRowActions(row: ApplicationRow, latestMessageByCompany: Map<string, 
     ]
   }
   if (row.currentStatus === 'Applied') {
+    if (isCold) {
+      return [{ label: 'Marked Cold', tone: 'muted', disabled: true }]
+    }
     if (senderRoute === 'reply') {
       return [
         { label: 'Draft Follow-Up', tone: 'primary' },
@@ -387,6 +404,7 @@ function buildApplicationDetailData(
   lastActivityByCompany: Map<string, string>,
   followUpDrafts: FollowUpDraft[],
   contactTasks: ContactTask[],
+  isCold: boolean,
 ): ApplicationDetailData {
   const sender = latestMessageByCompany.get(row.company)?.fromEmail || ''
   const senderRoute = classifySenderRoute(sender)
@@ -397,14 +415,44 @@ function buildApplicationDetailData(
     sender,
     senderRoute,
     ageDays,
-    actions: getRowActions(row, latestMessageByCompany),
-    followUpDraft: followUpDrafts.find((draft) => draft.company === row.company) ?? null,
+    actions: getRowActionsWithState(row, latestMessageByCompany, isCold),
+    followUpDraft: isCold ? null : followUpDrafts.find((draft) => draft.company === row.company) ?? null,
     contactTask: contactTasks.find((task) => task.company === row.company) ?? null,
     companyDomain: extractCompanyDomain(sender),
+    isCold,
   }
 }
 
-function ApplicationDetailCard({ row, detail }: { row: ApplicationRow; detail: ApplicationDetailData }) {
+async function copyPlainText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.setAttribute('readonly', 'true')
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    textarea.style.pointerEvents = 'none'
+    document.body.appendChild(textarea)
+    textarea.focus()
+    textarea.select()
+    const success = document.execCommand('copy')
+    document.body.removeChild(textarea)
+    return success
+  }
+}
+
+function ApplicationDetailCard({
+  row,
+  detail,
+  onMarkCold,
+}: {
+  row: ApplicationRow
+  detail: ApplicationDetailData
+  onMarkCold?: () => void
+}) {
+  const [copyState, setCopyState] = useState<'idle' | 'done' | 'error'>('idle')
   const searchLinks = [
     {
       label: 'Recruiters',
@@ -424,6 +472,14 @@ function ApplicationDetailCard({ row, detail }: { row: ApplicationRow; detail: A
     },
   ]
 
+  const handleCopyDraft = async () => {
+    if (!detail.followUpDraft) return
+    const payload = [detail.followUpDraft.subject, '', detail.followUpDraft.body].join('\n')
+    const ok = await copyPlainText(payload)
+    setCopyState(ok ? 'done' : 'error')
+    window.setTimeout(() => setCopyState('idle'), 1800)
+  }
+
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
       <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-soft)]/80 p-4">
@@ -433,13 +489,15 @@ function ApplicationDetailCard({ row, detail }: { row: ApplicationRow; detail: A
             <button
               key={action.label}
               type="button"
+              disabled={action.disabled}
+              onClick={action.label === 'Mark Cold' ? onMarkCold : undefined}
               className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                 action.tone === 'primary'
                   ? 'warm-button text-white'
                   : action.tone === 'secondary'
                     ? 'warm-pill text-[color:var(--accent-strong)]'
                     : 'warm-pill-neutral'
-              }`}
+              } ${action.disabled ? 'cursor-default opacity-70' : ''}`}
             >
               {action.label}
             </button>
@@ -488,9 +546,18 @@ function ApplicationDetailCard({ row, detail }: { row: ApplicationRow; detail: A
       <div className="rounded-2xl border border-[color:var(--border)] bg-white/70 p-4">
         {detail.followUpDraft ? (
           <>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
               <p className="warm-kicker text-xs font-medium uppercase tracking-wide">Email Draft</p>
               <span className="warm-pill-info rounded-full px-2.5 py-1 text-xs font-medium">Ready to copy</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyDraft}
+                className="warm-pill inline-flex rounded-full px-3 py-1.5 text-xs font-medium text-[color:var(--accent-strong)]"
+              >
+                {copyState === 'done' ? 'Copied' : copyState === 'error' ? 'Copy failed' : 'Copy text'}
+              </button>
             </div>
             <p className="warm-copy mt-3 text-sm font-medium">{detail.followUpDraft.subject}</p>
             <pre className="warm-copy mt-3 whitespace-pre-wrap rounded-xl bg-[color:var(--surface-soft)]/75 p-4 text-sm leading-6">
@@ -514,8 +581,10 @@ function ApplicationDetailCard({ row, detail }: { row: ApplicationRow; detail: A
                 ? 'This application is closed. Archive it or keep it for pattern review.'
                 : row.currentStatus === 'Interviewing'
                   ? 'Use this space for interview prep, thank-you notes, or recruiter check-ins.'
-                  : row.currentStatus === 'Offer'
-                    ? 'Use this space to compare terms, notes, and negotiation follow-up.'
+                : row.currentStatus === 'Offer'
+                  ? 'Use this space to compare terms, notes, and negotiation follow-up.'
+                  : detail.isCold
+                    ? 'This application is marked cold for this session. Run a new scan to reset it.'
                     : 'No draft is available yet, but the sender and status signals are captured here.'}
             </p>
           </>
@@ -537,6 +606,7 @@ export default function ResultsAndImageSection({
   const [open, setOpen] = useState(false)
   const [imageMissing, setImageMissing] = useState(false)
   const [expandedApplicationKey, setExpandedApplicationKey] = useState<string | null>(null)
+  const [coldRows, setColdRows] = useState<Record<string, boolean>>({})
   const followUpDrafts = buildFollowUpDrafts(applicationRows, messageRows)
   const contactTasks = buildContactTasks(applicationRows, messageRows)
   const latestMessageByCompany = buildLatestMessageByCompany(messageRows)
@@ -545,6 +615,14 @@ export default function ResultsAndImageSection({
   useEffect(() => {
     setImageMissing(false)
   }, [sankeyImageSrc])
+
+  useEffect(() => {
+    setColdRows({})
+  }, [applicationRows])
+
+  const markRowCold = (rowKey: string) => {
+    setColdRows((current) => ({ ...current, [rowKey]: true }))
+  }
 
   return (
     <div className="space-y-6">
@@ -682,20 +760,23 @@ export default function ResultsAndImageSection({
           <div className="space-y-3">
             <div className="space-y-3 md:hidden">
               {applicationRows.map((row, index) => {
+                const rowKey = `${row.company}-${row.position}-${row.applicationDate}-${index}`
                 const detail = buildApplicationDetailData(
                   row,
                   latestMessageByCompany,
                   lastActivityByCompany,
                   followUpDrafts,
                   contactTasks,
+                  !!coldRows[rowKey],
                 )
 
                 return (
                 <MobileApplicationCard
-                  key={`${row.company}-${index}`}
+                  key={rowKey}
                   row={row}
                   actions={detail.actions}
                   detail={detail}
+                  onMarkCold={() => markRowCold(rowKey)}
                 />
                 )
               })}
@@ -715,13 +796,14 @@ export default function ResultsAndImageSection({
                 </thead>
                 <tbody>
                   {applicationRows.map((row, index) => {
-                    const rowKey = `${row.company}-${index}`
+                    const rowKey = `${row.company}-${row.position}-${row.applicationDate}-${index}`
                     const detail = buildApplicationDetailData(
                       row,
                       latestMessageByCompany,
                       lastActivityByCompany,
                       followUpDrafts,
                       contactTasks,
+                      !!coldRows[rowKey],
                     )
                     const isExpanded = expandedApplicationKey === rowKey
 
@@ -751,7 +833,7 @@ export default function ResultsAndImageSection({
                         {isExpanded ? (
                           <tr className="warm-divider border-t bg-[color:var(--accent-soft)]/12">
                             <td colSpan={6} className="px-4 py-4">
-                              <ApplicationDetailCard row={row} detail={detail} />
+                              <ApplicationDetailCard row={row} detail={detail} onMarkCold={() => markRowCold(rowKey)} />
                             </td>
                           </tr>
                         ) : null}

@@ -513,6 +513,23 @@ def test_non_employer_tool_marketing_email_is_filtered():
     )
 
 
+def test_non_employer_tool_job_tracker_marketing_email_is_filtered():
+    assert (
+        _is_non_employer_tool_email(
+            "hello@tealhq.com",
+            "Track the Status of Every Job Application with Teal",
+            (
+                "Stay on top of every opportunity. "
+                "Keep every opportunity organized in one private dashboard, "
+                "with clear visibility into next steps and follow-ups. "
+                "No more scattered notes or missed connections."
+            ),
+            "tealhq",
+        )
+        is True
+    )
+
+
 def test_non_employer_logistics_email_is_filtered():
     assert (
         _is_non_employer_logistics_email(

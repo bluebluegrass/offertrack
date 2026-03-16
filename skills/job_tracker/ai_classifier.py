@@ -111,6 +111,11 @@ NON_EMPLOYER_TOOL_MARKETING_TERMS = (
     "instant feedback",
     "target roles",
     "build confidence",
+    "track the status of every job application",
+    "stay on top of every opportunity",
+    "keep every opportunity organized",
+    "clear visibility into next steps and follow ups",
+    "missed connections",
 )
 NON_EMPLOYER_LOGISTICS_ROOTS = {"sirva"}
 NON_EMPLOYER_LOGISTICS_TERMS = (
