@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, CalendarDays, CheckCircle2, Github, Loader2 } from 'lucide-react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { AlertCircle, ArrowLeft, CalendarDays, CheckCircle2, ChevronRight, Github, Loader2 } from 'lucide-react'
+import LandingPage from './components/LandingPage'
 import ResultsAndImageSection from './components/ResultsAndImageSection'
 
 type Status = 'Applied' | 'Interviewing' | 'Rejected' | 'Offer'
@@ -32,6 +33,7 @@ type MessageRow = {
 
 type CsvRow = Record<string, string>
 type MailProvider = 'gmail' | 'outlook'
+type AppScreen = 'connect' | 'scan' | 'results'
 type ScanApiPayload = {
   base_path?: string
   detail?: string
@@ -184,6 +186,84 @@ function normalizeProvider(value: string | null | undefined): MailProvider {
 
 function providerLabel(provider: MailProvider): string {
   return provider === 'outlook' ? 'Outlook' : 'Gmail'
+}
+
+function StepShell({
+  currentScreen,
+  onBack,
+  onViewIntro,
+  children,
+}: {
+  currentScreen: AppScreen
+  onBack?: () => void
+  onViewIntro: () => void
+  children: ReactNode
+}) {
+  const steps: { id: AppScreen; label: string }[] = [
+    { id: 'connect', label: 'Connect' },
+    { id: 'scan', label: 'Scan' },
+    { id: 'results', label: 'Results' },
+  ]
+
+  const activeIndex = steps.findIndex((step) => step.id === currentScreen)
+
+  return (
+    <>
+      <header className="mb-6 sm:mb-8">
+        <div className="mt-1 flex items-center gap-3">
+          <img src="/offertracker-icon-transparent.png" alt="OfferTracker logo" className="h-9 w-9 flex-none object-contain sm:h-10 sm:w-10" />
+          <h1 className="warm-title text-2xl font-semibold tracking-tight sm:text-3xl">
+            Offer<span className="warm-brand">Tracker</span>
+          </h1>
+        </div>
+        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            {steps.map((step, index) => {
+              const isActive = step.id === currentScreen
+              const isDone = index < activeIndex
+              return (
+                <div key={step.id} className="flex items-center gap-2">
+                  <div
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium ${
+                      isActive
+                        ? 'warm-button text-white'
+                        : isDone
+                          ? 'warm-pill-success'
+                          : 'warm-pill-neutral'
+                    }`}
+                  >
+                    <span>{index + 1}.</span>
+                    <span>{step.label}</span>
+                  </div>
+                  {index < steps.length - 1 ? <ChevronRight className="warm-muted h-4 w-4" /> : null}
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {onBack ? (
+              <button
+                type="button"
+                onClick={onBack}
+                className="warm-pill inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium text-[color:var(--accent-strong)]"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onViewIntro}
+              className="warm-pill inline-flex rounded-full px-3 py-1.5 text-xs font-medium text-[color:var(--accent-strong)]"
+            >
+              View intro
+            </button>
+          </div>
+        </div>
+      </header>
+      {children}
+    </>
+  )
 }
 
 function parseCsv(text: string): CsvRow[] {
@@ -403,6 +483,11 @@ async function loadRunData(startDate: string, endDate: string, email: string, pr
 }
 
 export default function App() {
+  const [showLanding, setShowLanding] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return window.sessionStorage.getItem('offertracker_hide_landing') !== '1'
+  })
+  const [currentScreen, setCurrentScreen] = useState<AppScreen>('connect')
   const [mailConnected, setMailConnected] = useState(false)
   const [connectedProvider, setConnectedProvider] = useState<MailProvider | null>(null)
   const [selectedProvider, setSelectedProvider] = useState<MailProvider>('gmail')
@@ -595,6 +680,7 @@ export default function App() {
       setHasRunResults(true)
       setScanStatusTone('success')
       setScanStatusText(`Run complete (${startDate} to ${endDate}).`)
+      setCurrentScreen('results')
     } catch (error) {
       setHasRunResults(false)
       setSummary(EMPTY_SUMMARY)
@@ -608,24 +694,47 @@ export default function App() {
     }
   }
 
+  const onContinueFromLanding = () => {
+    setShowLanding(false)
+    setCurrentScreen('connect')
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('offertracker_hide_landing', '1')
+    }
+  }
+
+  const onTryDemoFromLanding = () => {
+    setShowLanding(false)
+    setCurrentScreen('results')
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('offertracker_hide_landing', '1')
+    }
+  }
+
   return (
     <main className="min-h-screen overflow-x-hidden px-4 py-6 font-sans sm:px-6 sm:py-10 lg:px-8">
       <div className="mx-auto max-w-6xl">
-        <header className="mb-6 sm:mb-8">
-          <div className="mt-1 flex items-center gap-3">
-            <img src="/offertracker-icon-transparent.png" alt="OfferTracker logo" className="h-9 w-9 flex-none object-contain sm:h-10 sm:w-10" />
-            <h1 className="warm-title text-2xl font-semibold tracking-tight sm:text-3xl">
-              Offer<span className="warm-brand">Tracker</span>
-            </h1>
-          </div>
-          <p className="warm-copy mt-2 max-w-2xl text-sm leading-6 sm:text-base">
-            Connect Gmail or Outlook, scan a date range, and review your job search results.
-          </p>
-        </header>
-
         <div className="space-y-6">
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          <section className="warm-panel rounded-xl border p-4 sm:p-5">
+          {showLanding ? <LandingPage onContinue={onContinueFromLanding} onTryDemo={onTryDemoFromLanding} primaryCtaLabel="Connect Inbox" /> : null}
+          {!showLanding ? (
+            <>
+              <StepShell
+                currentScreen={currentScreen}
+                onBack={
+                  currentScreen === 'scan'
+                    ? () => setCurrentScreen('connect')
+                    : currentScreen === 'results'
+                      ? () => setCurrentScreen('scan')
+                      : undefined
+                }
+                onViewIntro={() => {
+                  setShowLanding(true)
+                  if (typeof window !== 'undefined') {
+                    window.sessionStorage.removeItem('offertracker_hide_landing')
+                  }
+                }}
+              >
+                {currentScreen === 'connect' ? (
+                  <section className="warm-panel mx-auto max-w-2xl rounded-xl border p-4 sm:p-6">
             <h2 className="warm-title text-lg font-semibold tracking-tight">Connect Email Provider</h2>
             <p className="warm-copy mt-1 text-sm">
               Mail access is read-only. OfferTracker does not store your raw email content.
@@ -689,9 +798,23 @@ export default function App() {
                 {connectionStatusText}
               </span>
             </div>
-          </section>
+                    {isActiveConnection ? (
+                      <div className="mt-6 flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setCurrentScreen('scan')}
+                          className="warm-button inline-flex min-h-[48px] items-center justify-center rounded-xl px-4 py-3 text-sm font-medium text-white transition"
+                        >
+                          Continue to Scan
+                        </button>
+                        <span className="warm-muted text-sm">Your connection is ready. Next, choose a date range.</span>
+                      </div>
+                    ) : null}
+                  </section>
+                ) : null}
 
-          <section className="warm-panel rounded-xl border p-4 sm:p-5">
+                {currentScreen === 'scan' ? (
+                  <section className="warm-panel mx-auto max-w-3xl rounded-xl border p-4 sm:p-6">
             <h2 className="warm-title text-lg font-semibold tracking-tight">Scan and Rerun</h2>
             <p className="warm-copy mt-1 text-sm">Select your timeframe and run the scan.</p>
 
@@ -755,16 +878,35 @@ export default function App() {
                 {scanStatusText}
               </span>
             </div>
-          </section>
-          </div>
+                    <div className="mt-6 flex flex-wrap items-center gap-3">
+                      {hasRunResults ? (
+                        <button
+                          type="button"
+                          onClick={() => setCurrentScreen('results')}
+                          className="warm-pill inline-flex min-h-[44px] items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium text-[color:var(--accent-strong)]"
+                        >
+                          View Results
+                        </button>
+                      ) : null}
+                      <span className="warm-muted text-sm">
+                        Demo data stays available until a real scan replaces it.
+                      </span>
+                    </div>
+                  </section>
+                ) : null}
 
-          <ResultsAndImageSection
-            summary={summary}
-            applicationRows={applicationRows}
-            messageRows={messageRows}
-            hasResults={hasRunResults}
-            sankeyImageSrc={sankeyImageSrc}
-          />
+                {currentScreen === 'results' ? (
+                  <ResultsAndImageSection
+                    summary={summary}
+                    applicationRows={applicationRows}
+                    messageRows={messageRows}
+                    hasResults={hasRunResults}
+                    sankeyImageSrc={sankeyImageSrc}
+                  />
+                ) : null}
+              </StepShell>
+            </>
+          ) : null}
         </div>
 
         <footer className="warm-divider mt-10 border-t pt-5">

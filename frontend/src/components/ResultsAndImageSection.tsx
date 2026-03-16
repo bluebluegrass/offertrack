@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
 
 type Status = 'Applied' | 'Interviewing' | 'Rejected' | 'Offer'
 
@@ -120,15 +121,17 @@ function MobileApplicationCard({
   row,
   actions,
   detail,
+  rowKey,
 }: {
   row: ApplicationRow
   actions: RowAction[]
   detail: ApplicationDetailData
+  rowKey: string
 }) {
   const [open, setOpen] = useState(false)
 
   return (
-    <article className="warm-panel rounded-xl border p-4">
+    <motion.article layout className="application-glass-card rounded-3xl border p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="warm-kicker text-xs font-medium uppercase tracking-wide">Company</p>
@@ -178,13 +181,24 @@ function MobileApplicationCard({
             </button>
           </div>
         ) : null}
-        {open ? (
-          <div className="warm-divider border-t pt-3">
-            <ApplicationDetailCard row={row} detail={detail} />
-          </div>
-        ) : null}
+        <AnimatePresence initial={false}>
+          {open ? (
+            <motion.div
+              key="mobile-detail"
+              initial={{ opacity: 0, height: 0, y: 8 }}
+              animate={{ opacity: 1, height: 'auto', y: 0 }}
+              exit={{ opacity: 0, height: 0, y: 8 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              className="overflow-hidden"
+            >
+              <motion.div layoutId={`application-detail-${rowKey}`} className="warm-divider border-t pt-3">
+                <ApplicationDetailCard row={row} detail={detail} />
+              </motion.div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </div>
-    </article>
+    </motion.article>
   )
 }
 
@@ -423,8 +437,8 @@ function ApplicationDetailCard({ row, detail }: { row: ApplicationRow; detail: A
   ]
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-      <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-soft)]/80 p-4">
+    <motion.div layout className="application-detail-glass grid gap-4 rounded-[1.6rem] border p-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+      <div className="rounded-2xl border border-[color:var(--border)] bg-white/45 p-4 backdrop-blur-sm">
         <p className="warm-kicker text-xs font-medium uppercase tracking-wide">Action Lane</p>
         <div className="mt-3 flex flex-wrap gap-2">
           {detail.actions.map((action) => (
@@ -483,7 +497,7 @@ function ApplicationDetailCard({ row, detail }: { row: ApplicationRow; detail: A
         </dl>
       </div>
 
-      <div className="rounded-2xl border border-[color:var(--border)] bg-white/70 p-4">
+      <div className="rounded-2xl border border-[color:var(--border)] bg-white/52 p-4 backdrop-blur-sm">
         {detail.followUpDraft ? (
           <>
             <div className="flex flex-wrap items-center gap-2">
@@ -519,7 +533,7 @@ function ApplicationDetailCard({ row, detail }: { row: ApplicationRow; detail: A
           </>
         )}
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -665,16 +679,17 @@ export default function ResultsAndImageSection({
                 )
 
                 return (
-                <MobileApplicationCard
-                  key={`${row.company}-${index}`}
-                  row={row}
-                  actions={detail.actions}
-                  detail={detail}
-                />
+                  <MobileApplicationCard
+                    key={`${row.company}-${index}`}
+                    rowKey={`${row.company}-${index}`}
+                    row={row}
+                    actions={detail.actions}
+                    detail={detail}
+                  />
                 )
               })}
             </div>
-            <div className="warm-panel hidden overflow-hidden rounded-xl border md:block">
+            <div className="application-glass-card hidden overflow-hidden rounded-3xl border md:block">
               <div className="overflow-x-auto">
                 <table className="w-full table-fixed text-left text-sm">
                 <thead className="warm-table-head">
@@ -725,7 +740,20 @@ export default function ResultsAndImageSection({
                         {isExpanded ? (
                           <tr className="warm-divider border-t bg-[color:var(--accent-soft)]/12">
                             <td colSpan={6} className="px-4 py-4">
-                              <ApplicationDetailCard row={row} detail={detail} />
+                              <AnimatePresence initial={false}>
+                                <motion.div
+                                  key={`${rowKey}-detail`}
+                                  initial={{ opacity: 0, height: 0, y: 8 }}
+                                  animate={{ opacity: 1, height: 'auto', y: 0 }}
+                                  exit={{ opacity: 0, height: 0, y: 8 }}
+                                  transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                                  className="overflow-hidden"
+                                >
+                                  <motion.div layoutId={`application-detail-${rowKey}`}>
+                                    <ApplicationDetailCard row={row} detail={detail} />
+                                  </motion.div>
+                                </motion.div>
+                              </AnimatePresence>
                             </td>
                           </tr>
                         ) : null}
