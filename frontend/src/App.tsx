@@ -55,6 +55,131 @@ const EMPTY_SUMMARY: Summary = {
   timeSpentDays: null,
 }
 
+const DEMO_APPLICATION_ROWS: ApplicationRow[] = [
+  {
+    company: 'Catawiki',
+    position: 'Software Engineer - Data Engineering',
+    applicationDate: '2026-02-16',
+    currentStatus: 'Offer',
+    evidenceSubject: 'Offer package for Software Engineer - Data Engineering',
+  },
+  {
+    company: 'Datadog',
+    position: 'Senior Data Engineer',
+    applicationDate: '2026-03-02',
+    currentStatus: 'Interviewing',
+    evidenceSubject: 'Final interview confirmation with Datadog',
+  },
+  {
+    company: 'Miro',
+    position: 'Analytics Engineer',
+    applicationDate: '2026-02-28',
+    currentStatus: 'Interviewing',
+    evidenceSubject: 'Hiring manager interview scheduled',
+  },
+  {
+    company: 'Stripe',
+    position: 'Data Platform Engineer',
+    applicationDate: '2026-03-05',
+    currentStatus: 'Applied',
+    evidenceSubject: 'Application received for Data Platform Engineer',
+  },
+  {
+    company: 'Notion',
+    position: 'Business Intelligence Engineer',
+    applicationDate: '2026-03-01',
+    currentStatus: 'Applied',
+    evidenceSubject: 'Thank you for applying to Notion',
+  },
+  {
+    company: 'Teal',
+    position: 'Data Analyst',
+    applicationDate: '2026-02-20',
+    currentStatus: 'Rejected',
+    evidenceSubject: 'Update regarding your application',
+  },
+]
+
+const DEMO_MESSAGE_ROWS: MessageRow[] = [
+  {
+    date: '2026-02-16',
+    company: 'Catawiki',
+    eventType: 'application',
+    subject: 'Application received for Software Engineer - Data Engineering',
+  },
+  {
+    date: '2026-02-27',
+    company: 'Catawiki',
+    eventType: 'interview',
+    subject: 'Interview confirmation with Catawiki',
+  },
+  {
+    date: '2026-03-12',
+    company: 'Catawiki',
+    eventType: 'offer',
+    subject: 'Offer package for Software Engineer - Data Engineering',
+  },
+  {
+    date: '2026-03-02',
+    company: 'Datadog',
+    eventType: 'application',
+    subject: 'Thanks for applying to Datadog',
+  },
+  {
+    date: '2026-03-10',
+    company: 'Datadog',
+    eventType: 'interview',
+    subject: 'Final interview confirmation with Datadog',
+  },
+  {
+    date: '2026-02-28',
+    company: 'Miro',
+    eventType: 'application',
+    subject: 'Application received',
+  },
+  {
+    date: '2026-03-08',
+    company: 'Miro',
+    eventType: 'interview',
+    subject: 'Hiring manager interview scheduled',
+  },
+  {
+    date: '2026-03-05',
+    company: 'Stripe',
+    eventType: 'application',
+    subject: 'Application received for Data Platform Engineer',
+  },
+  {
+    date: '2026-03-01',
+    company: 'Notion',
+    eventType: 'application',
+    subject: 'Thank you for applying to Notion',
+  },
+  {
+    date: '2026-02-20',
+    company: 'Teal',
+    eventType: 'application',
+    subject: 'Application received',
+  },
+  {
+    date: '2026-02-25',
+    company: 'Teal',
+    eventType: 'rejection',
+    subject: 'Update regarding your application',
+  },
+]
+
+const DEMO_SUMMARY: Summary = {
+  applications: 6,
+  interviews: 3,
+  rejections: 1,
+  offers: 1,
+  noResponse: 2,
+  timeToOfferDays: 24,
+  timeSpentDays: 25,
+}
+const DEMO_SANKEY_IMAGE_SRC = '/demo-sankey.png'
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
 
 function apiPath(path: string): string {
@@ -130,6 +255,28 @@ function normalizeStatus(value: string): Status {
   if (s === 'rejected' || s === 'rejection') return 'Rejected'
   if (s === 'interviewing' || s === 'interview') return 'Interviewing'
   return 'Applied'
+}
+
+function compareApplicationRows(a: ApplicationRow, b: ApplicationRow): number {
+  const statusRank: Record<Status, number> = {
+    Offer: 0,
+    Interviewing: 1,
+    Applied: 2,
+    Rejected: 3,
+  }
+
+  const rankDiff = statusRank[a.currentStatus] - statusRank[b.currentStatus]
+  if (rankDiff !== 0) return rankDiff
+
+  const aDate = a.applicationDate ? new Date(a.applicationDate).getTime() : 0
+  const bDate = b.applicationDate ? new Date(b.applicationDate).getTime() : 0
+  if (aDate !== bDate) return bDate - aDate
+
+  return a.company.localeCompare(b.company)
+}
+
+function sortApplicationRows(rows: ApplicationRow[]): ApplicationRow[] {
+  return [...rows].sort(compareApplicationRows)
 }
 
 function toIsoDateLocal(date: Date): string {
@@ -222,13 +369,13 @@ async function loadRunData(startDate: string, endDate: string, email: string, pr
     const appRowsCsv = parseCsv(appRaw)
     const messageRowsCsv = parseCsv(messageRaw)
 
-    const applicationRows: ApplicationRow[] = appRowsCsv.map((r) => ({
+    const applicationRows = sortApplicationRows(appRowsCsv.map((r) => ({
       company: r.company || r.application_id || '-',
       position: r.position || '',
       applicationDate: r.application_date || '',
       currentStatus: normalizeStatus(r.current_status || ''),
       evidenceSubject: r.evidence_subject || '',
-    }))
+    })))
 
     const messageRows: MessageRow[] = messageRowsCsv.map((r) => ({
       date: r.date || '',
@@ -278,16 +425,16 @@ export default function App() {
   const [endDate, setEndDate] = useState(() => toIsoDateLocal(new Date()))
   const [isRunning, setIsRunning] = useState(false)
   const [connectionStatusText, setConnectionStatusText] = useState('Checking mailbox connection...')
-  const [scanStatusText, setScanStatusText] = useState('Ready to scan.')
+  const [scanStatusText, setScanStatusText] = useState('Showing demo data. Run scan to replace it.')
   const [scanStatusTone, setScanStatusTone] = useState<'idle' | 'running' | 'success' | 'error'>('idle')
-  const [hasRunResults, setHasRunResults] = useState(false)
+  const [hasRunResults, setHasRunResults] = useState(true)
 
-  const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY)
-  const [applicationRows, setApplicationRows] = useState<ApplicationRow[]>([])
-  const [messageRows, setMessageRows] = useState<MessageRow[]>([])
+  const [summary, setSummary] = useState<Summary>(DEMO_SUMMARY)
+  const [applicationRows, setApplicationRows] = useState<ApplicationRow[]>(sortApplicationRows(DEMO_APPLICATION_ROWS))
+  const [messageRows, setMessageRows] = useState<MessageRow[]>(DEMO_MESSAGE_ROWS)
 
   const envSankeyImageSrc = import.meta.env.VITE_SANKEY_IMAGE_SRC
-  const [sankeyImageSrc, setSankeyImageSrc] = useState(envSankeyImageSrc ?? '')
+  const [sankeyImageSrc, setSankeyImageSrc] = useState(envSankeyImageSrc ?? DEMO_SANKEY_IMAGE_SRC)
   const todayIso = useMemo(() => toIsoDateLocal(new Date()), [])
   const isActiveConnection = mailConnected
   const activeProvider = connectedProvider ?? 'gmail'
@@ -419,13 +566,13 @@ export default function App() {
       const appRowsRaw = Array.isArray(scanPayload.application_rows) ? scanPayload.application_rows : []
       const msgRowsRaw = Array.isArray(scanPayload.message_rows) ? scanPayload.message_rows : []
 
-      const applicationRowsFromApi: ApplicationRow[] = appRowsRaw.map((r) => ({
+      const applicationRowsFromApi = sortApplicationRows(appRowsRaw.map((r) => ({
         company: r.company || r.application_id || '-',
         position: r.position || '',
         applicationDate: r.application_date || '',
         currentStatus: normalizeStatus(r.current_status || ''),
         evidenceSubject: r.evidence_subject || '',
-      }))
+      })))
       const messageRowsFromApi: MessageRow[] = msgRowsRaw.map((r) => ({
         date: r.date || '',
         company: r.company || '',
@@ -460,7 +607,7 @@ export default function App() {
       setSummary(EMPTY_SUMMARY)
       setApplicationRows([])
       setMessageRows([])
-      setSankeyImageSrc(envSankeyImageSrc ?? '')
+      setSankeyImageSrc(envSankeyImageSrc ?? DEMO_SANKEY_IMAGE_SRC)
       setScanStatusTone('error')
       setScanStatusText(error instanceof Error ? error.message : 'Run failed while loading results.')
     } finally {

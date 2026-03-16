@@ -9,6 +9,23 @@ from pathlib import Path
 
 from skills.job_tracker.types import FunnelMetrics
 
+PAGE_BG = "#FFF7F0"
+CARD_BG = "#FFFDF9"
+CARD_EDGE = "#F0C8A8"
+TITLE_TEXT = "#3F2418"
+BODY_TEXT = "#6D4B3A"
+MUTED_TEXT = "#9A735E"
+ACCENT = "#FF6A3D"
+ACCENT_DEEP = "#E9582D"
+APPLICATIONS_NODE = "#F1CBB5"
+REPLIES_NODE = "#FF8A61"
+NO_RESPONSE_NODE = "#E9D6C8"
+WITHDRAWN_NODE = "#F7B36A"
+OA_NODE = "#F1AA93"
+INTERVIEWS_NODE = "#FF7449"
+OFFERS_NODE = "#5FAE78"
+REJECTED_NODE = "#D9785F"
+
 
 @dataclass(slots=True)
 class Node:
@@ -50,13 +67,124 @@ def _draw_flow(ax, x0: float, x1: float, y0_top: float, y0_bot: float, y1_top: f
     ax.add_patch(PathPatch(MplPath(verts, codes), facecolor=color, edgecolor="none", alpha=alpha))
 
 
+def _apply_brand_canvas(fig, ax) -> None:
+    fig.patch.set_facecolor(PAGE_BG)
+    ax.set_facecolor(PAGE_BG)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+    ax.axhspan(0.0, 1.0, facecolor=PAGE_BG, zorder=-20)
+
+
+def _draw_brand_backdrop(ax) -> None:
+    from matplotlib.patches import Circle, FancyBboxPatch
+
+    ax.add_patch(Circle((0.10, 0.92), 0.16, facecolor="#FFE5D8", edgecolor="none", alpha=0.85, zorder=-15))
+    ax.add_patch(Circle((0.92, 0.12), 0.20, facecolor="#FFF0D9", edgecolor="none", alpha=0.75, zorder=-15))
+    ax.add_patch(
+        FancyBboxPatch(
+            (0.015, 0.10),
+            0.97,
+            0.80,
+            boxstyle="round,pad=0.012,rounding_size=0.03",
+            facecolor=CARD_BG,
+            edgecolor=CARD_EDGE,
+            linewidth=1.4,
+            zorder=-10,
+        )
+    )
+
+
+def _draw_node(ax, node: Node, node_w: float, value: int, *, emphasis: bool = False) -> None:
+    from matplotlib.patches import Rectangle
+
+    rect = Rectangle(
+        (node.x - node_w / 2, node.y - node.h / 2),
+        node_w,
+        node.h,
+        facecolor=node.color,
+        edgecolor="#FFFFFF",
+        linewidth=1.0 if emphasis else 0.8,
+        zorder=5,
+    )
+    ax.add_patch(rect)
+    ax.text(
+        node.x + 0.038,
+        node.y + 0.018,
+        str(value),
+        fontsize=28 if emphasis else 24,
+        fontweight="bold",
+        ha="left",
+        va="center",
+        color=TITLE_TEXT,
+    )
+    ax.text(
+        node.x + 0.038,
+        node.y - 0.018,
+        node.name,
+        fontsize=20 if emphasis else 18,
+        ha="left",
+        va="center",
+        color=BODY_TEXT,
+    )
+
+
+def _draw_title_badge(ax, title: str) -> None:
+    ax.text(
+        0.5,
+        0.06,
+        title,
+        ha="center",
+        va="center",
+        fontsize=30,
+        fontweight="bold",
+        color="#FFFFFF",
+        bbox=dict(boxstyle="round,pad=0.42,rounding_size=0.18", facecolor=ACCENT_DEEP, edgecolor="none"),
+    )
+
+
+def _draw_watermark(ax, watermark: str) -> None:
+    if not watermark.strip():
+        return
+
+    from matplotlib.offsetbox import AnnotationBbox, HPacker, OffsetImage, TextArea
+
+    logo_path = Path(__file__).resolve().parents[2] / "frontend" / "public" / "offertracker-icon-transparent.png"
+    text = TextArea(
+        watermark.strip(),
+        textprops={
+            "color": MUTED_TEXT,
+            "fontsize": 10,
+            "ha": "left",
+            "va": "center",
+        },
+    )
+
+    children = [text]
+    if logo_path.exists():
+        import matplotlib.image as mpimg
+
+        logo = mpimg.imread(str(logo_path))
+        children.append(OffsetImage(logo, zoom=0.16))
+
+    packed = HPacker(children=children, align="center", pad=0, sep=5)
+    anchored = AnnotationBbox(
+        packed,
+        (0.985, 0.008),
+        xycoords="axes fraction",
+        box_alignment=(1, 0),
+        frameon=False,
+        zorder=20,
+    )
+    ax.add_artist(anchored)
+
+
 def render_sankey(metrics: FunnelMetrics, title: str, out_path: str) -> str:
     _setup_matplotlib()
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from matplotlib.patches import Rectangle
 
     plt.rcParams["font.sans-serif"] = ["Inter", "Arial", "PingFang SC", "Noto Sans CJK SC", "DejaVu Sans"]
     plt.rcParams["axes.unicode_minus"] = False
@@ -79,30 +207,24 @@ def render_sankey(metrics: FunnelMetrics, title: str, out_path: str) -> str:
     scale = 0.56 / max_total
 
     nodes = {
-        "applications": Node("Applications", 0.08, 0.50, applications * scale, "#BDBDBD"),
-        "replies": Node("Replies", 0.30, 0.80, replies * scale, "#5FB7B2"),
-        "no_replies": Node("No Replies", 0.30, 0.40, no_replies * scale, "#E15B61"),
-        "withdrawn": Node("Withdrawn", 0.50, 0.78, withdrawn * scale, "#F2A34A"),
-        "oa": Node("OA", 0.50, 0.66, oa * scale, "#A675B0"),
-        "interviews": Node("Interviews", 0.66, 0.86, interviews * scale, "#4C79A8"),
-        "offers": Node("Offers", 0.86, 0.86, offers * scale, "#4CAF50"),
-        "rejected": Node("Rejected", 0.86, 0.66, rejected * scale, "#E15B61"),
+        "applications": Node("Applications", 0.08, 0.50, applications * scale, APPLICATIONS_NODE),
+        "replies": Node("Replies", 0.30, 0.80, replies * scale, REPLIES_NODE),
+        "no_replies": Node("No Replies", 0.30, 0.40, no_replies * scale, NO_RESPONSE_NODE),
+        "withdrawn": Node("Withdrawn", 0.50, 0.78, withdrawn * scale, WITHDRAWN_NODE),
+        "oa": Node("OA", 0.50, 0.66, oa * scale, OA_NODE),
+        "interviews": Node("Interviews", 0.66, 0.86, interviews * scale, INTERVIEWS_NODE),
+        "offers": Node("Offers", 0.86, 0.86, offers * scale, OFFERS_NODE),
+        "rejected": Node("Rejected", 0.86, 0.66, rejected * scale, REJECTED_NODE),
     }
 
     fig, ax = plt.subplots(figsize=(14, 9), dpi=100)
-    fig.patch.set_facecolor("#FFFFFF")
-    ax.set_facecolor("#FFFFFF")
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.axis("off")
+    _apply_brand_canvas(fig, ax)
+    _draw_brand_backdrop(ax)
 
     node_w = 0.024
 
     def top(node: Node) -> float:
         return node.y + node.h / 2
-
-    def bottom(node: Node) -> float:
-        return node.y - node.h / 2
 
     out_cursor = {k: top(v) for k, v in nodes.items()}
     in_cursor = {k: top(v) for k, v in nodes.items()}
@@ -122,14 +244,14 @@ def render_sankey(metrics: FunnelMetrics, title: str, out_path: str) -> str:
         return y0, y1
 
     flows = [
-        ("applications", "replies", replies, "#88CEC9"),
-        ("applications", "no_replies", no_replies, "#F1A8AE"),
-        ("replies", "oa", oa, "#C9B1D2"),
-        ("replies", "withdrawn", withdrawn, "#F6C488"),
-        ("oa", "interviews", oa_to_interviews, "#B8CCE2"),
-        ("replies", "interviews", direct_interviews, "#A9C1DA"),
-        ("interviews", "offers", offers, "#AADAA6"),
-        ("interviews", "rejected", interview_to_rejected, "#F0AAB1"),
+        ("applications", "replies", replies, "#FFB394"),
+        ("applications", "no_replies", no_replies, "#F2DED1"),
+        ("replies", "oa", oa, "#F8C4AF"),
+        ("replies", "withdrawn", withdrawn, "#F9C98D"),
+        ("oa", "interviews", oa_to_interviews, "#FFA37F"),
+        ("replies", "interviews", direct_interviews, "#FF9470"),
+        ("interviews", "offers", offers, "#98D3A8"),
+        ("interviews", "rejected", interview_to_rejected, "#E8B09F"),
     ]
 
     for src, dst, val, color in flows:
@@ -151,21 +273,10 @@ def render_sankey(metrics: FunnelMetrics, title: str, out_path: str) -> str:
     }
 
     for key, node in nodes.items():
-        ax.add_patch(Rectangle((node.x - node_w / 2, bottom(node)), node_w, node.h, facecolor=node.color, edgecolor="none"))
-        ax.text(node.x + 0.038, node.y + 0.018, str(vals[key]), fontsize=28 if key == "applications" else 24, fontweight="bold", ha="left", va="center")
-        ax.text(node.x + 0.038, node.y - 0.018, node.name, fontsize=20 if key == "applications" else 18, ha="left", va="center")
+        _draw_node(ax, node, node_w, vals[key], emphasis=(key == "applications"))
 
-    ax.text(
-        0.5,
-        0.06,
-        title,
-        ha="center",
-        va="center",
-        fontsize=32,
-        fontweight="bold",
-        color="#FFFFFF",
-        bbox=dict(boxstyle="square,pad=0.45", facecolor="#6E726D", edgecolor="none"),
-    )
+    _draw_title_badge(ax, title)
+    _draw_watermark(ax, "Generated by OfferTracker")
 
     output = Path(out_path).expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -186,7 +297,6 @@ def render_ai_sankey(
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from matplotlib.patches import Rectangle
 
     plt.rcParams["font.sans-serif"] = ["Inter", "Arial", "PingFang SC", "Noto Sans CJK SC", "DejaVu Sans"]
     plt.rcParams["axes.unicode_minus"] = False
@@ -213,36 +323,33 @@ def render_ai_sankey(
     stage_gap = 0.03
     stage_top = 0.88
     node_defs: dict[str, Node] = {
-        "applications": Node("Applications", 0.08, 0.50, applications * scale, "#BDBDBD"),
+        "applications": Node("Applications", 0.08, 0.50, applications * scale, APPLICATIONS_NODE),
     }
     stage_cursor = stage_top
     if interviews > 0:
         interviews_h = interviews * scale
         interviews_y = stage_cursor - interviews_h / 2
-        node_defs["interviews"] = Node("Interviews", stage_x, interviews_y, interviews_h, "#4C79A8")
+        node_defs["interviews"] = Node("Interviews", stage_x, interviews_y, interviews_h, INTERVIEWS_NODE)
         stage_cursor -= interviews_h + stage_gap
     if rejected_direct > 0:
         rejected_direct_h = rejected_direct * scale
         rejected_direct_y = stage_cursor - rejected_direct_h / 2
-        node_defs["rejected_direct"] = Node("Rejected (Direct)", stage_x, rejected_direct_y, rejected_direct_h, "#E15B61")
+        node_defs["rejected_direct"] = Node("Rejected (Direct)", stage_x, rejected_direct_y, rejected_direct_h, REJECTED_NODE)
         stage_cursor -= rejected_direct_h + stage_gap
     if no_response > 0:
         no_response_h = no_response * scale
         no_response_y = stage_cursor - no_response_h / 2
-        node_defs["no_response"] = Node("No Response", stage_x, no_response_y, no_response_h, "#4A4A4A")
+        node_defs["no_response"] = Node("No Response", stage_x, no_response_y, no_response_h, NO_RESPONSE_NODE)
     if rejected_after_interview > 0:
         node_defs["rejected_after_interview"] = Node(
-            "Rejected (After Interview)", 0.70, 0.62, rejected_after_interview * scale, "#D1495B"
+            "Rejected (After Interview)", 0.70, 0.62, rejected_after_interview * scale, REJECTED_NODE
         )
     if offers > 0:
-        node_defs["offers"] = Node("Offers", 0.84, 0.82, offers * scale, "#4CAF50")
+        node_defs["offers"] = Node("Offers", 0.84, 0.82, offers * scale, OFFERS_NODE)
 
     fig, ax = plt.subplots(figsize=(14, 9), dpi=100)
-    fig.patch.set_facecolor("#FFFFFF")
-    ax.set_facecolor("#FFFFFF")
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.axis("off")
+    _apply_brand_canvas(fig, ax)
+    _draw_brand_backdrop(ax)
 
     node_w = 0.024
 
@@ -268,15 +375,15 @@ def render_ai_sankey(
 
     flows: list[tuple[str, str, int, str]] = []
     if interviews > 0 and "interviews" in node_defs:
-        flows.append(("applications", "interviews", interviews, "#A9C1DA"))
+        flows.append(("applications", "interviews", interviews, "#FF9C77"))
     if no_response > 0 and "no_response" in node_defs:
-        flows.append(("applications", "no_response", no_response, "#8D8D8D"))
+        flows.append(("applications", "no_response", no_response, "#F0DDD0"))
     if rejected_direct > 0 and "rejected_direct" in node_defs:
-        flows.append(("applications", "rejected_direct", rejected_direct, "#F0AAB1"))
+        flows.append(("applications", "rejected_direct", rejected_direct, "#E7B19F"))
     if offers > 0 and "offers" in node_defs and "interviews" in node_defs:
-        flows.append(("interviews", "offers", offers, "#AADAA6"))
+        flows.append(("interviews", "offers", offers, "#9AD5AA"))
     if rejected_after_interview > 0 and "interviews" in node_defs and "rejected_after_interview" in node_defs:
-        flows.append(("interviews", "rejected_after_interview", rejected_after_interview, "#F08A96"))
+        flows.append(("interviews", "rejected_after_interview", rejected_after_interview, "#DFA08F"))
 
     for src, dst, val, color in flows:
         if val <= 0:
@@ -295,33 +402,10 @@ def render_ai_sankey(
     }
 
     for key, node in node_defs.items():
-        ax.add_patch(Rectangle((node.x - node_w / 2, node.y - node.h / 2), node_w, node.h, facecolor=node.color, edgecolor="none"))
-        ax.text(node.x + 0.038, node.y + 0.018, str(vals.get(key, 0)), fontsize=28 if key == "applications" else 24, fontweight="bold", ha="left", va="center")
-        ax.text(node.x + 0.038, node.y - 0.018, node.name, fontsize=20 if key == "applications" else 18, ha="left", va="center")
+        _draw_node(ax, node, node_w, vals.get(key, 0), emphasis=(key == "applications"))
 
-    ax.text(
-        0.5,
-        0.06,
-        title,
-        ha="center",
-        va="center",
-        fontsize=32,
-        fontweight="bold",
-        color="#FFFFFF",
-        bbox=dict(boxstyle="square,pad=0.45", facecolor="#6E726D", edgecolor="none"),
-    )
-    if watermark.strip():
-        ax.text(
-            0.985,
-            0.008,
-            watermark.strip(),
-            ha="right",
-            va="bottom",
-            fontsize=10,
-            color="#777777",
-            alpha=0.9,
-            bbox=dict(boxstyle="round,pad=0.12", facecolor="#FFFFFF", edgecolor="none", alpha=0.95),
-        )
+    _draw_title_badge(ax, title)
+    _draw_watermark(ax, watermark)
 
     output = Path(out_path).expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)

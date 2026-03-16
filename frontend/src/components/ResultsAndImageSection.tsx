@@ -150,29 +150,31 @@ export default function ResultsAndImageSection({
                 />
               </div>
 
-              <div className="warm-panel overflow-hidden rounded-xl border">
-                <div className="warm-divider border-b px-4 py-3 sm:px-5">
-                  <h3 className="warm-copy flex items-center gap-2 text-sm font-medium">
-                    <img src="/offertracker-icon-transparent.png" alt="" className="h-4 w-4" />
-                    OfferTracker Image
-                  </h3>
+              {sankeyImageSrc ? (
+                <div className="warm-panel overflow-hidden rounded-xl border">
+                  <div className="warm-divider border-b px-4 py-3 sm:px-5">
+                    <h3 className="warm-copy flex items-center gap-2 text-sm font-medium">
+                      <img src="/offertracker-icon-transparent.png" alt="" className="h-4 w-4" />
+                      OfferTracker Image
+                    </h3>
+                  </div>
+                  <div className="p-3 sm:p-4">
+                    {!imageMissing ? (
+                      <img
+                        src={sankeyImageSrc}
+                        alt="OfferTracker Sankey"
+                        className="w-full rounded-md border border-slate-100"
+                        loading="lazy"
+                        onError={() => setImageMissing(true)}
+                      />
+                    ) : (
+                      <p className="warm-copy text-sm">
+                        Image not found at <code className="warm-pill-neutral rounded px-1 py-0.5">{sankeyImageSrc}</code>
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="p-3 sm:p-4">
-                  {!imageMissing ? (
-                    <img
-                      src={sankeyImageSrc}
-                      alt="OfferTracker Sankey"
-                      className="w-full rounded-md border border-slate-100"
-                      loading="lazy"
-                      onError={() => setImageMissing(true)}
-                    />
-                  ) : (
-                    <p className="warm-copy text-sm">
-                      Image not found at <code className="warm-pill-neutral rounded px-1 py-0.5">{sankeyImageSrc}</code>
-                    </p>
-                  )}
-                </div>
-              </div>
+              ) : null}
             </div>
           )}
         </div>
