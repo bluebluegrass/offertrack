@@ -6,4 +6,172 @@
 
 :root {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+  --page-bg: oklch(98.2% 0.022 56);
+  --page-bg-soft: oklch(96.9% 0.05 58);
+  --surface: oklch(98.9% 0.016 54);
+  --surface-strong: oklch(96.8% 0.03 50);
+  --border: oklch(87% 0.04 50);
+  --border-strong: oklch(76% 0.11 42);
+  --text-strong: oklch(28% 0.028 32);
+  --text-body: oklch(44% 0.018 36);
+  --text-muted: oklch(58% 0.015 40);
+  --accent: oklch(71% 0.225 39);
+  --accent-strong: oklch(63% 0.235 35);
+  --accent-soft: oklch(93.5% 0.08 46);
+  --accent-soft-strong: oklch(86% 0.13 42);
+  --info-bg: oklch(94% 0.065 47);
+  --info-text: oklch(52% 0.13 37);
+  --success-bg: oklch(94% 0.05 145);
+  --success-text: oklch(45% 0.08 150);
+  --error-bg: oklch(95% 0.05 28);
+  --error-text: oklch(50% 0.12 28);
+  --warning-bg: oklch(95% 0.05 75);
+  --warning-text: oklch(55% 0.11 60);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-width: 320px;
+  background:
+    radial-gradient(circle at top left, color-mix(in oklch, var(--accent-soft) 78%, white) 0, transparent 30rem),
+    radial-gradient(circle at top right, color-mix(in oklch, var(--page-bg-soft) 88%, white) 0, transparent 24rem),
+    var(--page-bg);
+  color: var(--text-body);
+}
+
+a,
+button,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+.date-input-mobile {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.warm-panel {
+  background: linear-gradient(180deg, color-mix(in oklch, var(--accent-soft) 22%, white) 0%, var(--surface) 22%, var(--surface) 100%);
+  border-color: var(--border);
+  box-shadow: 0 14px 32px color-mix(in oklch, var(--accent) 12%, transparent);
+}
+
+.warm-panel-soft {
+  background: linear-gradient(180deg, color-mix(in oklch, var(--accent-soft) 42%, white) 0%, color-mix(in oklch, var(--surface-strong) 82%, white) 100%);
+  border-color: color-mix(in oklch, var(--border-strong) 55%, var(--accent));
+}
+
+.warm-title {
+  color: var(--text-strong);
+}
+
+.warm-copy {
+  color: var(--text-body);
+}
+
+.warm-muted {
+  color: var(--text-muted);
+}
+
+.warm-kicker {
+  color: var(--accent-strong);
+  letter-spacing: 0.08em;
+}
+
+.warm-brand {
+  color: var(--accent-strong);
+}
+
+.warm-link {
+  color: var(--accent-strong);
+}
+
+.warm-link:hover {
+  color: var(--accent);
+}
+
+.warm-button {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+  box-shadow: 0 14px 28px color-mix(in oklch, var(--accent) 30%, transparent);
+}
+
+.warm-button:hover {
+  background: linear-gradient(135deg, color-mix(in oklch, var(--accent) 88%, white) 0%, var(--accent-strong) 100%);
+}
+
+.warm-pill {
+  background: color-mix(in oklch, var(--accent-soft) 90%, white);
+  color: var(--accent-strong);
+}
+
+.warm-pill-success {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.warm-pill-info {
+  background: var(--info-bg);
+  color: var(--info-text);
+}
+
+.warm-pill-error {
+  background: var(--error-bg);
+  color: var(--error-text);
+}
+
+.warm-pill-neutral {
+  background: color-mix(in oklch, var(--accent-soft) 28%, white);
+  color: var(--text-body);
+}
+
+.warm-input {
+  border-color: var(--border);
+  background: color-mix(in oklch, var(--surface) 90%, white);
+  color: var(--text-strong);
+}
+
+.warm-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--accent-soft) 65%, transparent);
+}
+
+.warm-table-head {
+  background: color-mix(in oklch, var(--accent-soft) 58%, white);
+  color: var(--text-muted);
+}
+
+.warm-divider {
+  border-color: color-mix(in oklch, var(--border) 80%, var(--accent-soft));
+}
+
+.warm-empty {
+  background: linear-gradient(180deg, color-mix(in oklch, var(--surface) 78%, white) 0%, color-mix(in oklch, var(--accent-soft) 18%, white) 100%);
+  border-color: color-mix(in oklch, var(--border) 70%, var(--accent-soft));
+}
+
+@supports (-webkit-touch-callout: none) {
+  .date-input-mobile {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .date-input-mobile::-webkit-date-and-time-value {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .date-input-mobile::-webkit-datetime-edit {
+    padding: 0;
+  }
+
+  .date-input-mobile::-webkit-calendar-picker-indicator {
+    opacity: 0.01;
+  }
 }

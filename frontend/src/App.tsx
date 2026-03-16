@@ -469,33 +469,38 @@ export default function App() {
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-slate-50 px-4 py-10 font-sans sm:px-6 lg:px-8">
+    <main className="min-h-screen overflow-x-hidden px-4 py-6 font-sans sm:px-6 sm:py-10 lg:px-8">
       <div className="mx-auto max-w-6xl">
-        <header className="mb-8">
+        <header className="mb-6 sm:mb-8">
           <div className="mt-1 flex items-center gap-3">
-            <img src="/offertracker-icon-transparent.png" alt="OfferTracker logo" className="h-9 w-9 object-contain" />
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900">OfferTracker</h1>
+            <img src="/offertracker-icon-transparent.png" alt="OfferTracker logo" className="h-9 w-9 flex-none object-contain sm:h-10 sm:w-10" />
+            <h1 className="warm-title text-2xl font-semibold tracking-tight sm:text-3xl">
+              Offer<span className="warm-brand">Tracker</span>
+            </h1>
           </div>
-          <p className="mt-2 text-sm text-slate-500">Connect Gmail or Outlook, scan a date range, and review your job search results.</p>
+          <p className="warm-copy mt-2 max-w-2xl text-sm leading-6 sm:text-base">
+            Connect Gmail or Outlook, scan a date range, and review your job search results.
+          </p>
         </header>
 
         <div className="space-y-6">
-          <section className="rounded-lg border border-slate-200 bg-white p-5">
-            <h2 className="text-lg font-semibold tracking-tight text-slate-900">Connect Email Provider</h2>
-            <p className="mt-1 text-sm text-slate-500">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+          <section className="warm-panel rounded-xl border p-4 sm:p-5">
+            <h2 className="warm-title text-lg font-semibold tracking-tight">Connect Email Provider</h2>
+            <p className="warm-copy mt-1 text-sm">
               Mail access is read-only. OfferTracker does not store your raw email content.
             </p>
 
-            <p className="mt-4 text-xs font-medium uppercase tracking-wide text-slate-500">Step 1. Choose provider</p>
+            <p className="warm-kicker mt-4 text-xs font-medium uppercase tracking-wide">Step 1. Choose provider</p>
             <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => onSelectProvider('gmail')}
                 disabled={isConnecting}
-                className={`rounded-lg border px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                className={`min-h-[92px] rounded-xl border px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
                   selectedProvider === 'gmail'
-                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                    ? 'warm-panel-soft border-[color:var(--border-strong)] text-[color:var(--accent-strong)]'
+                    : 'border-[color:var(--border)] bg-white/80 text-[color:var(--text-body)] hover:bg-[color:var(--accent-soft)]/40'
                 }`}
               >
                 <p className="text-sm font-semibold">Gmail</p>
@@ -505,23 +510,23 @@ export default function App() {
                 type="button"
                 onClick={() => onSelectProvider('outlook')}
                 disabled={isConnecting}
-                className={`rounded-lg border px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                className={`min-h-[92px] rounded-xl border px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
                   selectedProvider === 'outlook'
-                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                    ? 'warm-panel-soft border-[color:var(--border-strong)] text-[color:var(--accent-strong)]'
+                    : 'border-[color:var(--border)] bg-white/80 text-[color:var(--text-body)] hover:bg-[color:var(--accent-soft)]/40'
                 }`}
               >
                 <p className="text-sm font-semibold">Outlook</p>
                 <p className="mt-1 text-xs">Use Microsoft OAuth read-only access.</p>
               </button>
             </div>
-            <p className="mt-4 text-xs font-medium uppercase tracking-wide text-slate-500">Step 2. Connect selected provider</p>
+            <p className="warm-kicker mt-4 text-xs font-medium uppercase tracking-wide">Step 2. Connect selected provider</p>
             <div className="mt-2">
               <button
                 type="button"
                 onClick={onConnect}
                 disabled={isConnecting}
-                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="warm-button inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
               >
                 {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {isConnecting ? `Connecting ${providerLabel(selectedProvider)}...` : `Connect ${providerLabel(selectedProvider)}`}
@@ -530,8 +535,8 @@ export default function App() {
 
             <div className="mt-4">
               <span
-                className={`inline-flex max-w-full items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${
-                  isActiveConnection ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
+                className={`inline-flex max-w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium leading-5 ${
+                  isActiveConnection ? 'warm-pill-success' : 'warm-pill-info'
                 }`}
               >
                 {isCheckingAuth || isConnecting ? (
@@ -546,34 +551,34 @@ export default function App() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-5">
-            <h2 className="text-lg font-semibold tracking-tight text-slate-900">Scan and Rerun</h2>
-            <p className="mt-1 text-sm text-slate-500">Select your timeframe and run the scan.</p>
+          <section className="warm-panel rounded-xl border p-4 sm:p-5">
+            <h2 className="warm-title text-lg font-semibold tracking-tight">Scan and Rerun</h2>
+            <p className="warm-copy mt-1 text-sm">Select your timeframe and run the scan.</p>
 
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="block min-w-0 text-sm text-slate-600">
+              <label className="warm-copy block min-w-0 text-sm">
                 Start Date
                 <span className="relative mt-1 block">
-                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--text-muted)]" />
                   <input
                     type="date"
                     value={startDate}
                     onChange={(event) => setStartDate(event.target.value)}
                     max={todayIso}
-                    className="min-w-0 w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-left text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    className="date-input-mobile warm-input min-w-0 w-full max-w-full rounded-xl border py-3 pl-9 pr-3 text-left text-base outline-none transition sm:text-sm"
                   />
                 </span>
               </label>
-              <label className="block min-w-0 text-sm text-slate-600">
+              <label className="warm-copy block min-w-0 text-sm">
                 End Date
                 <span className="relative mt-1 block">
-                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--text-muted)]" />
                   <input
                     type="date"
                     value={endDate}
                     onChange={(event) => setEndDate(event.target.value)}
                     max={todayIso}
-                    className="min-w-0 w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-left text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    className="date-input-mobile warm-input min-w-0 w-full max-w-full rounded-xl border py-3 pl-9 pr-3 text-left text-base outline-none transition sm:text-sm"
                   />
                 </span>
               </label>
@@ -584,20 +589,20 @@ export default function App() {
                 type="button"
                 onClick={onRun}
                 disabled={!canRun}
-                className="inline-flex w-full items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                className="warm-button inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
               >
                 {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {runButtonText}
               </button>
               <span
-                className={`inline-flex max-w-full items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${
+                className={`inline-flex max-w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium leading-5 ${
                   scanStatusTone === 'success'
-                    ? 'bg-emerald-50 text-emerald-700'
+                    ? 'warm-pill-success'
                     : scanStatusTone === 'error'
-                      ? 'bg-red-50 text-red-700'
+                      ? 'warm-pill-error'
                       : scanStatusTone === 'running'
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'bg-slate-100 text-slate-700'
+                        ? 'warm-pill'
+                        : 'warm-pill-neutral'
                 }`}
               >
                 {scanStatusTone === 'running' ? (
@@ -611,6 +616,7 @@ export default function App() {
               </span>
             </div>
           </section>
+          </div>
 
           <ResultsAndImageSection
             summary={summary}
@@ -621,8 +627,8 @@ export default function App() {
           />
         </div>
 
-        <footer className="mt-10 border-t border-slate-200 pt-5">
-          <div className="flex flex-col gap-3 text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+        <footer className="warm-divider mt-10 border-t pt-5">
+          <div className="warm-copy flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="inline-flex items-center gap-2 text-sm">
               <img src="/offertracker-icon-transparent.png" alt="OfferTracker logo" className="h-5 w-5" />
               <span>© 2026 OfferTracker</span>
@@ -633,19 +639,19 @@ export default function App() {
                 target="_blank"
                 rel="noreferrer"
                 aria-label="GitHub"
-                className="inline-flex items-center text-slate-600 transition-colors hover:text-slate-900"
+                className="warm-link inline-flex items-center transition-colors"
               >
                 <Github className="h-4 w-4" />
               </a>
-              <a href="/privacy" className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900">
+              <a href="/privacy" className="warm-link text-sm font-medium transition-colors">
                 Privacy
               </a>
-              <a href="/terms" className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900">
+              <a href="/terms" className="warm-link text-sm font-medium transition-colors">
                 Terms
               </a>
               <a
                 href="mailto:hey.simonalife@gmail.com"
-                className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+                className="warm-link text-sm font-medium transition-colors"
               >
                 Contact
               </a>
