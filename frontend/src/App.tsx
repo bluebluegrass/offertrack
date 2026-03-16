@@ -27,6 +27,7 @@ type MessageRow = {
   company: string
   eventType: string
   subject: string
+  fromEmail: string
 }
 
 type CsvRow = Record<string, string>
@@ -60,22 +61,22 @@ const DEMO_APPLICATION_ROWS: ApplicationRow[] = [
     company: 'Catawiki',
     position: 'Software Engineer - Data Engineering',
     applicationDate: '2026-02-16',
-    currentStatus: 'Offer',
-    evidenceSubject: 'Offer package for Software Engineer - Data Engineering',
+    currentStatus: 'Applied',
+    evidenceSubject: 'Application received for Software Engineer - Data Engineering',
   },
   {
     company: 'Datadog',
     position: 'Senior Data Engineer',
     applicationDate: '2026-03-02',
-    currentStatus: 'Interviewing',
-    evidenceSubject: 'Final interview confirmation with Datadog',
+    currentStatus: 'Applied',
+    evidenceSubject: 'Thanks for applying to Datadog',
   },
   {
     company: 'Miro',
     position: 'Analytics Engineer',
     applicationDate: '2026-02-28',
-    currentStatus: 'Interviewing',
-    evidenceSubject: 'Hiring manager interview scheduled',
+    currentStatus: 'Rejected',
+    evidenceSubject: 'Update on your application at Miro',
   },
   {
     company: 'Stripe',
@@ -106,76 +107,66 @@ const DEMO_MESSAGE_ROWS: MessageRow[] = [
     company: 'Catawiki',
     eventType: 'application',
     subject: 'Application received for Software Engineer - Data Engineering',
-  },
-  {
-    date: '2026-02-27',
-    company: 'Catawiki',
-    eventType: 'interview',
-    subject: 'Interview confirmation with Catawiki',
-  },
-  {
-    date: '2026-03-12',
-    company: 'Catawiki',
-    eventType: 'offer',
-    subject: 'Offer package for Software Engineer - Data Engineering',
+    fromEmail: 'noreply@catawiki.com',
   },
   {
     date: '2026-03-02',
     company: 'Datadog',
     eventType: 'application',
     subject: 'Thanks for applying to Datadog',
-  },
-  {
-    date: '2026-03-10',
-    company: 'Datadog',
-    eventType: 'interview',
-    subject: 'Final interview confirmation with Datadog',
+    fromEmail: 'candidate@datadoghq.com',
   },
   {
     date: '2026-02-28',
     company: 'Miro',
     eventType: 'application',
     subject: 'Application received',
+    fromEmail: 'noreply@miro.com',
   },
   {
-    date: '2026-03-08',
+    date: '2026-03-04',
     company: 'Miro',
-    eventType: 'interview',
-    subject: 'Hiring manager interview scheduled',
+    eventType: 'rejection',
+    subject: 'Update on your application at Miro',
+    fromEmail: 'noreply@miro.com',
   },
   {
     date: '2026-03-05',
     company: 'Stripe',
     eventType: 'application',
     subject: 'Application received for Data Platform Engineer',
+    fromEmail: 'no-reply@jobs.lever.co',
   },
   {
     date: '2026-03-01',
     company: 'Notion',
     eventType: 'application',
     subject: 'Thank you for applying to Notion',
+    fromEmail: 'notifications@ashbyhq.com',
   },
   {
     date: '2026-02-20',
     company: 'Teal',
     eventType: 'application',
     subject: 'Application received',
+    fromEmail: 'hello@tealhq.com',
   },
   {
     date: '2026-02-25',
     company: 'Teal',
     eventType: 'rejection',
     subject: 'Update regarding your application',
+    fromEmail: 'hello@tealhq.com',
   },
 ]
 
 const DEMO_SUMMARY: Summary = {
   applications: 6,
-  interviews: 3,
-  rejections: 1,
-  offers: 1,
-  noResponse: 2,
-  timeToOfferDays: 24,
+  interviews: 0,
+  rejections: 2,
+  offers: 0,
+  noResponse: 4,
+  timeToOfferDays: null,
   timeSpentDays: 25,
 }
 const DEMO_SANKEY_IMAGE_SRC = '/demo-sankey.png'
@@ -382,6 +373,7 @@ async function loadRunData(startDate: string, endDate: string, email: string, pr
       company: r.company || '',
       eventType: r.event_type || '',
       subject: r.subject || '',
+      fromEmail: r.from_email || r.from_email_address || '',
     }))
 
     const { timeToOfferDays, timeSpentDays } = computeTiming(messageRowsCsv)
@@ -578,6 +570,7 @@ export default function App() {
         company: r.company || '',
         eventType: r.event_type || '',
         subject: r.subject || '',
+        fromEmail: r.from_email || r.from_email_address || '',
       }))
 
       const { timeToOfferDays, timeSpentDays } = computeTiming(msgRowsRaw)

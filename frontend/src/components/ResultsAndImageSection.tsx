@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
 type Status = 'Applied' | 'Interviewing' | 'Rejected' | 'Offer'
@@ -26,6 +26,7 @@ type MessageRow = {
   company: string
   eventType: string
   subject: string
+  fromEmail: string
 }
 
 type Props = {
@@ -34,6 +35,39 @@ type Props = {
   messageRows: MessageRow[]
   hasResults: boolean
   sankeyImageSrc: string
+}
+
+type RowAction = {
+  label: string
+  tone: 'primary' | 'secondary' | 'muted'
+}
+
+type FollowUpDraft = {
+  company: string
+  position: string
+  ageDays: number
+  subject: string
+  body: string
+}
+
+type ContactTask = {
+  company: string
+  position: string
+  ageDays: number
+  label: string
+  hint: string
+}
+
+type SenderRoute = 'reply' | 'noreply' | 'ats' | 'unknown'
+
+type ApplicationDetailData = {
+  sender: string
+  senderRoute: SenderRoute
+  ageDays: number | null
+  actions: RowAction[]
+  followUpDraft: FollowUpDraft | null
+  contactTask: ContactTask | null
+  companyDomain: string
 }
 
 const statusPillClass: Record<Status, string> = {
@@ -73,12 +107,26 @@ function MobileMessageCard({ row }: { row: MessageRow }) {
           <p className="warm-kicker text-xs font-medium uppercase tracking-wide">Subject</p>
           <p className="warm-copy mt-1 break-words text-sm leading-6">{row.subject || '-'}</p>
         </div>
+        <div>
+          <p className="warm-kicker text-xs font-medium uppercase tracking-wide">From</p>
+          <p className="warm-copy mt-1 break-all text-sm leading-6">{row.fromEmail || '-'}</p>
+        </div>
       </div>
     </article>
   )
 }
 
-function MobileApplicationCard({ row }: { row: ApplicationRow }) {
+function MobileApplicationCard({
+  row,
+  actions,
+  detail,
+}: {
+  row: ApplicationRow
+  actions: RowAction[]
+  detail: ApplicationDetailData
+}) {
+  const [open, setOpen] = useState(false)
+
   return (
     <article className="warm-panel rounded-xl border p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -100,8 +148,378 @@ function MobileApplicationCard({ row }: { row: ApplicationRow }) {
           <p className="warm-kicker text-xs font-medium uppercase tracking-wide">Evidence Subject</p>
           <p className="warm-copy mt-1 break-words text-sm leading-6">{row.evidenceSubject || '-'}</p>
         </div>
+        {actions.length > 0 ? (
+          <div>
+            <p className="warm-kicker text-xs font-medium uppercase tracking-wide">Next Action</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {actions.map((action) => (
+                <button
+                  key={action.label}
+                  type="button"
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    action.tone === 'primary'
+                      ? 'warm-button text-white'
+                      : action.tone === 'secondary'
+                        ? 'warm-pill text-[color:var(--accent-strong)]'
+                        : 'warm-pill-neutral'
+                  }`}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setOpen((value) => !value)}
+              className="warm-copy mt-3 inline-flex items-center gap-1 text-sm font-medium"
+            >
+              {open ? 'Hide details' : 'Show details'}
+              {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+          </div>
+        ) : null}
+        {open ? (
+          <div className="warm-divider border-t pt-3">
+            <ApplicationDetailCard row={row} detail={detail} />
+          </div>
+        ) : null}
       </div>
     </article>
+  )
+}
+
+function daysSince(dateLike: string): number | null {
+  if (!dateLike) return null
+  const date = new Date(dateLike)
+  if (Number.isNaN(date.getTime())) return null
+  return Math.max(Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24)), 0)
+}
+
+function classifySenderRoute(fromEmail: string): SenderRoute {
+  const normalized = fromEmail.trim().toLowerCase()
+  if (!normalized) return 'unknown'
+
+  const localPart = normalized.split('@')[0] || ''
+  const domain = normalized.split('@')[1] || ''
+
+  if (
+    /(^|[._-])(no ?reply|noreply|do ?not ?reply|donotreply|system|notifications?)($|[._-])/.test(localPart) ||
+    localPart === 'system'
+  ) {
+    return 'noreply'
+  }
+
+  if (
+    [
+      'ashbyhq.com',
+      'greenhouse.io',
+      'lever.co',
+      'smartrecruiters.com',
+      'myworkday.com',
+      'workday.com',
+      'jobvite.com',
+      'icims.com',
+      'taleo.net',
+      'successfactors.com',
+    ].some((part) => domain === part || domain.endsWith(`.${part}`))
+  ) {
+    return 'ats'
+  }
+
+  return 'reply'
+}
+
+function buildLatestMessageByCompany(messageRows: MessageRow[]): Map<string, MessageRow> {
+  const latestByCompany = new Map<string, MessageRow>()
+  for (const row of messageRows) {
+    if (!row.company || !row.date) continue
+    const existing = latestByCompany.get(row.company)
+    if (!existing || new Date(row.date).getTime() > new Date(existing.date).getTime()) {
+      latestByCompany.set(row.company, row)
+    }
+  }
+  return latestByCompany
+}
+
+function buildLastActivityByCompany(messageRows: MessageRow[]): Map<string, string> {
+  const lastActivityByCompany = new Map<string, string>()
+  for (const row of messageRows) {
+    if (!row.company || !row.date) continue
+    const existing = lastActivityByCompany.get(row.company)
+    if (!existing || new Date(row.date).getTime() > new Date(existing).getTime()) {
+      lastActivityByCompany.set(row.company, row.date)
+    }
+  }
+  return lastActivityByCompany
+}
+
+function extractCompanyDomain(fromEmail: string): string {
+  const normalized = fromEmail.trim().toLowerCase()
+  const domain = normalized.split('@')[1] || ''
+  if (!domain) return ''
+
+  const blockedDomains = [
+    'ashbyhq.com',
+    'greenhouse.io',
+    'lever.co',
+    'smartrecruiters.com',
+    'myworkday.com',
+    'workday.com',
+    'jobvite.com',
+    'icims.com',
+    'taleo.net',
+    'successfactors.com',
+  ]
+  if (blockedDomains.some((part) => domain === part || domain.endsWith(`.${part}`))) {
+    return ''
+  }
+  return domain
+}
+
+function buildSearchUrl(query: string): string {
+  return `https://www.google.com/search?q=${encodeURIComponent(query)}`
+}
+
+function buildLinkedInPeopleSearchQuery(company: string, titleHint: string): string {
+  return `site:linkedin.com/in ${titleHint} "${company}"`
+}
+
+function getRowActions(row: ApplicationRow, latestMessageByCompany: Map<string, MessageRow>): RowAction[] {
+  const senderRoute = classifySenderRoute(latestMessageByCompany.get(row.company)?.fromEmail || '')
+
+  if (row.currentStatus === 'Interviewing') {
+    return [
+      { label: 'Build Prep', tone: 'primary' },
+      { label: senderRoute === 'reply' ? 'Check In' : 'Find Recruiter', tone: 'secondary' },
+    ]
+  }
+  if (row.currentStatus === 'Applied') {
+    if (senderRoute === 'reply') {
+      return [
+        { label: 'Draft Follow-Up', tone: 'primary' },
+        { label: 'Mark Cold', tone: 'muted' },
+      ]
+    }
+    if (senderRoute === 'ats') {
+      return [
+        { label: 'Check ATS', tone: 'secondary' },
+        { label: 'Find Recruiter', tone: 'muted' },
+      ]
+    }
+    return [
+      { label: 'Find Contact', tone: 'secondary' },
+      { label: 'Mark Cold', tone: 'muted' },
+    ]
+  }
+  if (row.currentStatus === 'Rejected') {
+    return [{ label: 'Archive', tone: 'muted' }]
+  }
+  if (row.currentStatus === 'Offer') {
+    return [{ label: 'View Notes', tone: 'secondary' }]
+  }
+  return []
+}
+
+function buildFollowUpDrafts(applicationRows: ApplicationRow[], messageRows: MessageRow[]): FollowUpDraft[] {
+  const lastActivityByCompany = buildLastActivityByCompany(messageRows)
+  const latestMessageByCompany = buildLatestMessageByCompany(messageRows)
+
+  return applicationRows
+    .filter((row) => row.currentStatus === 'Applied')
+    .filter((row) => classifySenderRoute(latestMessageByCompany.get(row.company)?.fromEmail || '') === 'reply')
+    .map((row) => {
+      const referenceDate = lastActivityByCompany.get(row.company) || row.applicationDate
+      const ageDays = daysSince(referenceDate) ?? 0
+      return {
+        company: row.company,
+        position: row.position,
+        ageDays,
+        subject: `Follow-up on ${row.position || 'my application'} at ${row.company}`,
+        body: [
+          `Hi ${row.company} team,`,
+          '',
+          `I wanted to follow up on my application for the ${row.position || 'role'} position.`,
+          'I remain very interested in the opportunity and would be glad to share any additional information if helpful.',
+          '',
+          'Please let me know if there is any update on the process.',
+          '',
+          'Best,',
+          '[Your Name]',
+        ].join('\n'),
+      }
+    })
+    .filter((draft) => draft.ageDays >= 7)
+    .sort((a, b) => b.ageDays - a.ageDays)
+}
+
+function buildContactTasks(applicationRows: ApplicationRow[], messageRows: MessageRow[]): ContactTask[] {
+  const lastActivityByCompany = buildLastActivityByCompany(messageRows)
+  const latestMessageByCompany = buildLatestMessageByCompany(messageRows)
+
+  return applicationRows
+    .filter((row) => row.currentStatus === 'Applied')
+    .map((row) => {
+      const referenceDate = lastActivityByCompany.get(row.company) || row.applicationDate
+      const ageDays = daysSince(referenceDate) ?? 0
+      const senderRoute = classifySenderRoute(latestMessageByCompany.get(row.company)?.fromEmail || '')
+      if (ageDays < 7 || senderRoute === 'reply') return null
+
+      return {
+        company: row.company,
+        position: row.position,
+        ageDays,
+        label: senderRoute === 'ats' ? 'Check ATS or find recruiter' : 'Find a better contact',
+        hint:
+          senderRoute === 'ats'
+            ? 'This email came from an applicant tracking system. Check the portal first, then look for a recruiter or hiring manager.'
+            : 'This email came from a no-reply or system mailbox. Replying is unlikely to reach a person.',
+      }
+    })
+    .filter((task): task is ContactTask => task !== null)
+    .sort((a, b) => b.ageDays - a.ageDays)
+}
+
+function buildApplicationDetailData(
+  row: ApplicationRow,
+  latestMessageByCompany: Map<string, MessageRow>,
+  lastActivityByCompany: Map<string, string>,
+  followUpDrafts: FollowUpDraft[],
+  contactTasks: ContactTask[],
+): ApplicationDetailData {
+  const sender = latestMessageByCompany.get(row.company)?.fromEmail || ''
+  const senderRoute = classifySenderRoute(sender)
+  const referenceDate = lastActivityByCompany.get(row.company) || row.applicationDate
+  const ageDays = daysSince(referenceDate)
+
+  return {
+    sender,
+    senderRoute,
+    ageDays,
+    actions: getRowActions(row, latestMessageByCompany),
+    followUpDraft: followUpDrafts.find((draft) => draft.company === row.company) ?? null,
+    contactTask: contactTasks.find((task) => task.company === row.company) ?? null,
+    companyDomain: extractCompanyDomain(sender),
+  }
+}
+
+function ApplicationDetailCard({ row, detail }: { row: ApplicationRow; detail: ApplicationDetailData }) {
+  const searchLinks = [
+    {
+      label: 'Recruiters',
+      href: buildSearchUrl(buildLinkedInPeopleSearchQuery(row.company, 'recruiter OR "talent acquisition"')),
+    },
+    {
+      label: 'Hiring Managers',
+      href: buildSearchUrl(buildLinkedInPeopleSearchQuery(row.company, `"${row.position}" OR "hiring manager"`)),
+    },
+    {
+      label: 'LinkedIn',
+      href: buildSearchUrl(`site:linkedin.com "${row.company}" "${row.position}" recruiter`),
+    },
+    {
+      label: 'Careers Page',
+      href: buildSearchUrl(`${row.company} careers ${detail.companyDomain || ''}`.trim()),
+    },
+  ]
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+      <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-soft)]/80 p-4">
+        <p className="warm-kicker text-xs font-medium uppercase tracking-wide">Action Lane</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {detail.actions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                action.tone === 'primary'
+                  ? 'warm-button text-white'
+                  : action.tone === 'secondary'
+                    ? 'warm-pill text-[color:var(--accent-strong)]'
+                    : 'warm-pill-neutral'
+              }`}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+        <dl className="mt-4 space-y-3 text-sm">
+          <div>
+            <dt className="warm-kicker text-xs font-medium uppercase tracking-wide">Latest Sender</dt>
+            <dd className="warm-copy mt-1 break-all">{detail.sender || 'No sender captured'}</dd>
+          </div>
+          <div>
+            <dt className="warm-kicker text-xs font-medium uppercase tracking-wide">Contact Route</dt>
+            <dd className="warm-copy mt-1">
+              {detail.senderRoute === 'reply'
+                ? 'Direct reply is possible'
+                : detail.senderRoute === 'ats'
+                  ? 'Use portal or recruiter search'
+                  : detail.senderRoute === 'noreply'
+                    ? 'Find a real person instead'
+                    : 'Contact path unclear'}
+            </dd>
+          </div>
+          <div>
+            <dt className="warm-kicker text-xs font-medium uppercase tracking-wide">Quiet Period</dt>
+            <dd className="warm-copy mt-1">{detail.ageDays === null ? 'Unknown' : `${detail.ageDays} days since last visible activity`}</dd>
+          </div>
+          <div>
+            <dt className="warm-kicker text-xs font-medium uppercase tracking-wide">Search Shortcuts</dt>
+            <dd className="mt-2 flex flex-wrap gap-2">
+              {searchLinks.map((link) => (
+                <a
+                  key={link.label}
+                  href={link.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="warm-pill inline-flex rounded-full px-3 py-1.5 text-xs font-medium text-[color:var(--accent-strong)]"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      <div className="rounded-2xl border border-[color:var(--border)] bg-white/70 p-4">
+        {detail.followUpDraft ? (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="warm-kicker text-xs font-medium uppercase tracking-wide">Email Draft</p>
+              <span className="warm-pill-info rounded-full px-2.5 py-1 text-xs font-medium">Ready to copy</span>
+            </div>
+            <p className="warm-copy mt-3 text-sm font-medium">{detail.followUpDraft.subject}</p>
+            <pre className="warm-copy mt-3 whitespace-pre-wrap rounded-xl bg-[color:var(--surface-soft)]/75 p-4 text-sm leading-6">
+              {detail.followUpDraft.body}
+            </pre>
+          </>
+        ) : detail.contactTask ? (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="warm-kicker text-xs font-medium uppercase tracking-wide">Manual Route</p>
+              <span className="warm-pill-neutral rounded-full px-2.5 py-1 text-xs font-medium">No direct reply</span>
+            </div>
+            <p className="warm-title mt-3 text-base font-semibold">{detail.contactTask.label}</p>
+            <p className="warm-copy mt-2 text-sm leading-6">{detail.contactTask.hint}</p>
+          </>
+        ) : (
+          <>
+            <p className="warm-kicker text-xs font-medium uppercase tracking-wide">Next Step</p>
+            <p className="warm-copy mt-3 text-sm leading-6">
+              {row.currentStatus === 'Rejected'
+                ? 'This application is closed. Archive it or keep it for pattern review.'
+                : row.currentStatus === 'Interviewing'
+                  ? 'Use this space for interview prep, thank-you notes, or recruiter check-ins.'
+                  : row.currentStatus === 'Offer'
+                    ? 'Use this space to compare terms, notes, and negotiation follow-up.'
+                    : 'No draft is available yet, but the sender and status signals are captured here.'}
+            </p>
+          </>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -114,6 +532,11 @@ export default function ResultsAndImageSection({
 }: Props) {
   const [open, setOpen] = useState(false)
   const [imageMissing, setImageMissing] = useState(false)
+  const [expandedApplicationKey, setExpandedApplicationKey] = useState<string | null>(null)
+  const followUpDrafts = buildFollowUpDrafts(applicationRows, messageRows)
+  const contactTasks = buildContactTasks(applicationRows, messageRows)
+  const latestMessageByCompany = buildLatestMessageByCompany(messageRows)
+  const lastActivityByCompany = buildLastActivityByCompany(messageRows)
 
   useEffect(() => {
     setImageMissing(false)
@@ -203,6 +626,7 @@ export default function ResultsAndImageSection({
                   <th className="px-4 py-3 font-medium">Date</th>
                   <th className="px-4 py-3 font-medium">Company</th>
                   <th className="px-4 py-3 font-medium">Event Type</th>
+                  <th className="px-4 py-3 font-medium">From</th>
                   <th className="px-4 py-3 font-medium">Subject</th>
                 </tr>
               </thead>
@@ -212,6 +636,7 @@ export default function ResultsAndImageSection({
                     <td className="warm-copy px-4 py-3 align-top">{row.date}</td>
                     <td className="warm-title px-4 py-3 align-top">{row.company}</td>
                     <td className="warm-copy px-4 py-3 align-top">{row.eventType}</td>
+                    <td className="warm-copy max-w-[240px] truncate px-4 py-3 align-top">{row.fromEmail || '-'}</td>
                     <td className="warm-muted max-w-[420px] truncate px-4 py-3 align-top">{row.subject}</td>
                   </tr>
                 ))}
@@ -230,9 +655,24 @@ export default function ResultsAndImageSection({
           </div>
           <div className="space-y-3">
             <div className="space-y-3 md:hidden">
-              {applicationRows.map((row, index) => (
-                <MobileApplicationCard key={`${row.company}-${index}`} row={row} />
-              ))}
+              {applicationRows.map((row, index) => {
+                const detail = buildApplicationDetailData(
+                  row,
+                  latestMessageByCompany,
+                  lastActivityByCompany,
+                  followUpDrafts,
+                  contactTasks,
+                )
+
+                return (
+                <MobileApplicationCard
+                  key={`${row.company}-${index}`}
+                  row={row}
+                  actions={detail.actions}
+                  detail={detail}
+                />
+                )
+              })}
             </div>
             <div className="warm-panel hidden overflow-hidden rounded-xl border md:block">
               <div className="overflow-x-auto">
@@ -243,23 +683,55 @@ export default function ResultsAndImageSection({
                     <th className="px-4 py-3 font-medium">Position</th>
                     <th className="px-4 py-3 font-medium">Date</th>
                     <th className="px-4 py-3 font-medium">Current Status</th>
+                    <th className="px-4 py-3 font-medium">Details</th>
                     <th className="px-4 py-3 font-medium">Evidence Subject</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {applicationRows.map((row, index) => (
-                    <tr key={`${row.company}-${index}`} className="warm-divider border-t transition-colors hover:bg-[color:var(--accent-soft)]/18">
-                      <td className="warm-title px-4 py-3 align-top">{row.company}</td>
-                      <td className="warm-copy px-4 py-3 align-top">{row.position}</td>
-                      <td className="warm-copy px-4 py-3 align-top">{row.applicationDate}</td>
-                      <td className="px-4 py-3 align-top">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusPillClass[row.currentStatus]}`}>
-                          {row.currentStatus}
-                        </span>
-                      </td>
-                      <td className="warm-muted max-w-[320px] truncate px-4 py-3 align-top">{row.evidenceSubject}</td>
-                    </tr>
-                  ))}
+                  {applicationRows.map((row, index) => {
+                    const rowKey = `${row.company}-${index}`
+                    const detail = buildApplicationDetailData(
+                      row,
+                      latestMessageByCompany,
+                      lastActivityByCompany,
+                      followUpDrafts,
+                      contactTasks,
+                    )
+                    const isExpanded = expandedApplicationKey === rowKey
+
+                    return (
+                      <Fragment key={rowKey}>
+                        <tr key={rowKey} className="warm-divider border-t transition-colors hover:bg-[color:var(--accent-soft)]/18">
+                          <td className="warm-title px-4 py-3 align-top">{row.company}</td>
+                          <td className="warm-copy px-4 py-3 align-top">{row.position}</td>
+                          <td className="warm-copy px-4 py-3 align-top">{row.applicationDate}</td>
+                          <td className="px-4 py-3 align-top">
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusPillClass[row.currentStatus]}`}>
+                              {row.currentStatus}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedApplicationKey((current) => (current === rowKey ? null : rowKey))}
+                              className="warm-pill inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium text-[color:var(--accent-strong)]"
+                            >
+                              {isExpanded ? 'Hide card' : 'Open card'}
+                              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            </button>
+                          </td>
+                          <td className="warm-muted max-w-[320px] truncate px-4 py-3 align-top">{row.evidenceSubject}</td>
+                        </tr>
+                        {isExpanded ? (
+                          <tr className="warm-divider border-t bg-[color:var(--accent-soft)]/12">
+                            <td colSpan={6} className="px-4 py-4">
+                              <ApplicationDetailCard row={row} detail={detail} />
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    )
+                  })}
                 </tbody>
               </table>
               </div>
