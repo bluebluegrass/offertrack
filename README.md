@@ -112,6 +112,17 @@ cd frontend
 npm run build
 ```
 
+Compare fast vs enhanced scan outputs on the same date range:
+
+```bash
+python3 scripts/compare_scan_modes.py \
+  --source gmail \
+  --start 2026-02-01 \
+  --end 2026-03-01 \
+  --out output/compare_scan_modes \
+  --report-json output/compare_scan_modes/report.json
+```
+
 ## Notes
 
 - Mail access is read-only
