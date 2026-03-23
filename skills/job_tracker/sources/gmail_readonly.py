@@ -6,7 +6,6 @@ import base64
 import email.utils
 import html
 import re
-import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -193,10 +192,8 @@ def fetch_messages(
     max_messages: int = 2000,
     gmail_query_mode: str = "strict",
     include_body: bool = False,
-    max_body_chars: int = 7000,
     allow_interactive_auth: bool = True,
 ) -> list[dict[str, Any]]:
-    fetch_started = time.monotonic()
     credentials = Path(credentials_path).expanduser().resolve()
     if not credentials.exists():
         raise RuntimeError(f"Credentials file not found: {credentials}")
@@ -265,8 +262,8 @@ def fetch_messages(
             header_date = _parse_header_date(headers.get("date", ""))
             occurred = _internal_ms_to_datetime(raw.get("internalDate"), header_date)
             body = _extract_body_text(raw.get("payload", {})) if include_body else ""
-            if len(body) > max_body_chars:
-                body = body[:max_body_chars]
+            if len(body) > 20000:
+                body = body[:20000]
 
             out.append(
                 {
@@ -287,9 +284,4 @@ def fetch_messages(
         if not page_token:
             break
 
-    total_ms = int((time.monotonic() - fetch_started) * 1000)
-    print(
-        f"[GMAIL FETCH] fetched={len(out)} include_body={include_body} max_body_chars={max_body_chars} total_ms={total_ms}",
-        flush=True,
-    )
     return out

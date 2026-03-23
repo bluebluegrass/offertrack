@@ -552,7 +552,7 @@ export default function App() {
 
     try {
       await new Promise((resolve) => setTimeout(resolve, 500))
-      setScanStatusText('Step 2/4: Running fast scan and classification...')
+      setScanStatusText('Step 2/4: Running scan and classification...')
 
       const scanResponse = await fetch(apiPath('/api/scan'), {
         method: 'POST',
@@ -562,8 +562,6 @@ export default function App() {
           email: connectedEmail ?? '',
           start_date: startDate,
           end_date: endDate,
-          scan_mode: 'fast',
-          max_messages: 300,
         }),
       })
       const scanRaw = await scanResponse.text()
@@ -617,7 +615,7 @@ export default function App() {
       setSummary(summaryFromApi)
       setApplicationRows(applicationRowsFromApi)
       setMessageRows(messageRowsFromApi)
-      setSankeyImageSrc(envSankeyImageSrc ?? scanPayload.sankey_image_data_url ?? DEMO_SANKEY_IMAGE_SRC)
+      setSankeyImageSrc(envSankeyImageSrc ?? scanPayload.sankey_image_data_url ?? '')
       setHasRunResults(true)
       setDashboardMode('real')
       setScanStatusTone('success')

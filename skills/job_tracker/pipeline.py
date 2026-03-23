@@ -6,7 +6,6 @@ import re
 import json
 import random
 import csv
-import time
 from collections import Counter
 from dataclasses import asdict
 from datetime import datetime
@@ -140,7 +139,6 @@ def run(
     ai_sankey_path: str = "output/ai_sankey.png",
     allow_interactive_auth: bool = True,
 ) -> SkillRunResult:
-    total_started = time.monotonic()
     start_dt, end_dt = _validate_dates(start, end)
     start_date = start_dt.date()
     end_date = end_dt.date()
@@ -151,7 +149,6 @@ def run(
         raise ValueError("max_messages cap is 5000")
 
     if source == "gmail":
-        fetch_started = time.monotonic()
         cred_path = Path(credentials_path).expanduser().resolve()
         if not cred_path.exists():
             raise ValueError(f"credentials.json missing: {cred_path}")
@@ -164,11 +161,9 @@ def run(
             max_messages=max_messages,
             gmail_query_mode=gmail_query_mode,
             include_body=ai_classify,
-            max_body_chars=min(ai_max_body_chars, 7000),
             allow_interactive_auth=allow_interactive_auth,
         )
     elif source == "outlook":
-        fetch_started = time.monotonic()
         raw_messages = fetch_outlook_messages(
             email=email,
             start_date=start_date,
@@ -178,30 +173,19 @@ def run(
             include_body=ai_classify,
         )
     elif source == "sample":
-        fetch_started = time.monotonic()
         raw_messages = load_sample_messages(start_date, end_date)
     elif source == "csv":
-        fetch_started = time.monotonic()
         if not csv_path:
             raise ValueError("csv_path is required for source='csv'")
         raw_messages = load_csv_messages(csv_path, start_date, end_date)
     else:
         raise ValueError(f"Unsupported source: {source}")
-    fetch_ms = int((time.monotonic() - fetch_started) * 1000)
-    print(f"[PIPELINE] fetch_ms={fetch_ms} raw_messages={len(raw_messages)} source={source}", flush=True)
 
-    normalize_started = time.monotonic()
     normalized_all = [normalize_message(raw) for raw in raw_messages]
     normalized_all.sort(key=lambda m: m.date)
     normalized, first_scan_rows = apply_first_scan_filter(normalized_all)
     normalized.sort(key=lambda m: m.date)
-    normalize_ms = int((time.monotonic() - normalize_started) * 1000)
-    print(
-        f"[PIPELINE] normalize_ms={normalize_ms} normalized_all={len(normalized_all)} filtered={len(normalized)}",
-        flush=True,
-    )
 
-    rules_started = time.monotonic()
     events: list[Event] = []
     app_has_interview: dict[str, bool] = {}
     decision_rows: list[dict[str, str]] = []
@@ -416,13 +400,6 @@ def run(
                 }
             )
 
-    rules_ms = int((time.monotonic() - rules_started) * 1000)
-    print(
-        f"[PIPELINE] rules_ms={rules_ms} filtered_messages={len(normalized)} events={len(events)} "
-        f"summary_rows={len(summary_message_rows)}",
-        flush=True,
-    )
-
     _, _, warnings, audit_rows = compute_funnel(events)
     app_summary_rows = build_application_summary_rows(summary_message_rows, events)
     metrics, rates = compute_metrics_from_application_summary(app_summary_rows)
@@ -453,12 +430,9 @@ def run(
         debug_samples=debug_rows,
     )
 
-    ai_ms = 0
     if ai_classify and not dry_run:
-        ai_started = time.monotonic()
         # AI path classifies the full fetched set so first-scan does not hide late-stage outcomes.
         ai_input_messages = normalized_all
-        print(f"[PIPELINE] ai_input_messages={len(ai_input_messages)}", flush=True)
         relevant_csv = write_relevant_emails_csv(relevant_emails_path, ai_input_messages)
         ai_msg_rows = classify_messages_with_llm(
             messages=ai_input_messages,
@@ -480,13 +454,7 @@ def run(
         result.artifacts["ai_sankey_png_path"] = ai_sankey_png
         for line in build_ai_console_summary(ai_summary):
             print(line)
-        ai_ms = int((time.monotonic() - ai_started) * 1000)
-        print(
-            f"[PIPELINE] ai_ms={ai_ms} ai_message_rows={len(ai_msg_rows)} ai_application_rows={len(ai_app_rows)}",
-            flush=True,
-        )
 
-    artifact_started = time.monotonic()
     if not dry_run:
         _save_metrics_json(metrics_path, result)
         write_application_summary_csv(str(app_summary_path), app_summary_rows)
@@ -510,12 +478,6 @@ def run(
             for m in normalized
         ]
         _save_minimal_metadata(metadata_path, minimal_rows)
-    artifact_ms = int((time.monotonic() - artifact_started) * 1000)
-    total_ms = int((time.monotonic() - total_started) * 1000)
-    print(
-        f"[PIPELINE] artifact_ms={artifact_ms} total_ms={total_ms} ai_enabled={ai_classify} ai_ms={ai_ms}",
-        flush=True,
-    )
     for line in build_company_console_summary(app_summary_rows):
         print(line)
 
