@@ -2,6 +2,26 @@
 
 OfferTracker is a job application tracking app that scans a connected mailbox, classifies job-related email, summarizes the pipeline, and helps users decide what to do next for each application.
 
+## Screenshots
+
+### Connect Gmail or Outlook
+
+![OfferTracker connect and scan screen](docs/screenshots/connect-and-scan.png)
+
+Choose a mailbox provider, connect with read-only OAuth, and run scans from the same landing view.
+
+### Review Pipeline Summary and Sankey
+
+![OfferTracker dashboard summary and Sankey](docs/screenshots/pipeline-summary.png)
+
+OfferTracker summarizes the funnel with headline metrics, time-in-pipeline stats, and a branded Sankey visualization.
+
+### Open Per-Application Action Cards
+
+![OfferTracker application details and action cards](docs/screenshots/application-details.png)
+
+Each application row can expand into an action card with sender context, follow-up guidance, and recruiter / ATS shortcuts.
+
 ## What It Does
 
 - Connects Gmail or Outlook with read-only OAuth

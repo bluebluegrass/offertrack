@@ -59,42 +59,42 @@ const EMPTY_SUMMARY: Summary = {
 
 const DEMO_APPLICATION_ROWS: ApplicationRow[] = [
   {
-    company: 'Catawiki',
-    position: 'Software Engineer - Data Engineering',
+    company: 'Netflix',
+    position: 'Software Engineer, Data Platform',
     applicationDate: '2026-02-16',
     currentStatus: 'Applied',
-    evidenceSubject: 'Application received for Software Engineer - Data Engineering',
+    evidenceSubject: 'Application received for Software Engineer, Data Platform',
   },
   {
-    company: 'Datadog',
+    company: 'Anthropic',
     position: 'Senior Data Engineer',
     applicationDate: '2026-03-02',
     currentStatus: 'Applied',
-    evidenceSubject: 'Thanks for applying to Datadog',
+    evidenceSubject: 'Thanks for applying to Anthropic',
   },
   {
-    company: 'Miro',
+    company: 'Google',
     position: 'Analytics Engineer',
     applicationDate: '2026-02-28',
     currentStatus: 'Rejected',
-    evidenceSubject: 'Update on your application at Miro',
+    evidenceSubject: 'Update on your application at Google',
   },
   {
-    company: 'Stripe',
+    company: 'OpenAI',
     position: 'Data Platform Engineer',
     applicationDate: '2026-03-05',
     currentStatus: 'Applied',
     evidenceSubject: 'Application received for Data Platform Engineer',
   },
   {
-    company: 'Notion',
+    company: 'Microsoft',
     position: 'Business Intelligence Engineer',
     applicationDate: '2026-03-01',
     currentStatus: 'Applied',
-    evidenceSubject: 'Thank you for applying to Notion',
+    evidenceSubject: 'Thank you for applying to Microsoft',
   },
   {
-    company: 'Teal',
+    company: 'Meta',
     position: 'Data Analyst',
     applicationDate: '2026-02-20',
     currentStatus: 'Rejected',
@@ -105,59 +105,59 @@ const DEMO_APPLICATION_ROWS: ApplicationRow[] = [
 const DEMO_MESSAGE_ROWS: MessageRow[] = [
   {
     date: '2026-02-16',
-    company: 'Catawiki',
+    company: 'Netflix',
     eventType: 'application',
-    subject: 'Application received for Software Engineer - Data Engineering',
-    fromEmail: 'noreply@catawiki.com',
+    subject: 'Application received for Software Engineer, Data Platform',
+    fromEmail: 'noreply@jobs.netflix.com',
   },
   {
     date: '2026-03-02',
-    company: 'Datadog',
+    company: 'Anthropic',
     eventType: 'application',
-    subject: 'Thanks for applying to Datadog',
-    fromEmail: 'candidate@datadoghq.com',
+    subject: 'Thanks for applying to Anthropic',
+    fromEmail: 'candidate@anthropic.com',
   },
   {
     date: '2026-02-28',
-    company: 'Miro',
+    company: 'Google',
     eventType: 'application',
     subject: 'Application received',
-    fromEmail: 'noreply@miro.com',
+    fromEmail: 'noreply@google.com',
   },
   {
     date: '2026-03-04',
-    company: 'Miro',
+    company: 'Google',
     eventType: 'rejection',
-    subject: 'Update on your application at Miro',
-    fromEmail: 'noreply@miro.com',
+    subject: 'Update on your application at Google',
+    fromEmail: 'noreply@google.com',
   },
   {
     date: '2026-03-05',
-    company: 'Stripe',
+    company: 'OpenAI',
     eventType: 'application',
     subject: 'Application received for Data Platform Engineer',
     fromEmail: 'no-reply@jobs.lever.co',
   },
   {
     date: '2026-03-01',
-    company: 'Notion',
+    company: 'Microsoft',
     eventType: 'application',
-    subject: 'Thank you for applying to Notion',
+    subject: 'Thank you for applying to Microsoft',
     fromEmail: 'notifications@ashbyhq.com',
   },
   {
     date: '2026-02-20',
-    company: 'Teal',
+    company: 'Meta',
     eventType: 'application',
     subject: 'Application received',
-    fromEmail: 'hello@tealhq.com',
+    fromEmail: 'careers@meta.com',
   },
   {
     date: '2026-02-25',
-    company: 'Teal',
+    company: 'Meta',
     eventType: 'rejection',
     subject: 'Update regarding your application',
-    fromEmail: 'hello@tealhq.com',
+    fromEmail: 'careers@meta.com',
   },
 ]
 
@@ -696,7 +696,7 @@ export default function App() {
               </button>
             </div>
             <p className="warm-kicker mt-4 text-xs font-medium uppercase tracking-wide">Step 2. Connect selected provider</p>
-            <div className="mt-2">
+            <div className="mt-2 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
               <button
                 type="button"
                 onClick={onConnect}
@@ -706,9 +706,6 @@ export default function App() {
                 {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {isConnecting ? `Connecting ${providerLabel(selectedProvider)}...` : `Connect ${providerLabel(selectedProvider)}`}
               </button>
-            </div>
-
-            <div className="mt-4">
               <span
                 className={`inline-flex max-w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium leading-5 ${
                   isActiveConnection ? 'warm-pill-success' : 'warm-pill-info'
