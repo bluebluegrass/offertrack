@@ -21,6 +21,7 @@ FREE_DOMAINS = {
 
 ATS_HINTS = {
     "greenhouse.io",
+    "greenhouse-mail.io",
     "ashbyhq.com",
     "lever.co",
     "workday.com",
@@ -28,10 +29,41 @@ ATS_HINTS = {
     "smartrecruiters.com",
     "jobvite.com",
     "icims.com",
+    "teamtailor-mail.com",
+    "teamtailor.com",
+    "recruitee.com",
 }
 
 NON_EMPLOYER_TOOL_DOMAINS = {
     "tealhq.com",
+}
+
+INVALID_COMPANY_NAMES = {
+    "gmail",
+    "google meet",
+    "greenhouse",
+    "greenhouse mail",
+    "greenhouse-mail",
+    "ashbyhq",
+    "myworkday",
+    "teamtailor",
+    "teamtailor-mail",
+    "icims",
+    "codesignal",
+    "hackerrank",
+}
+
+ROLE_GARBAGE_PHRASES = {
+    "thank you for your application",
+    "thank you for applying",
+    "we have received your application",
+    "we will review",
+    "one step closer to joining us",
+    "after careful consideration",
+    "we are very glad",
+    "we will keep you posted",
+    "if your application meets",
+    "the effort you",
 }
 
 NON_EMPLOYER_TOOL_MARKETING_PHRASES = [
@@ -189,19 +221,71 @@ def _company_name_from_domain(domain: str) -> str:
     return parts[-2]
 
 
+def _company_name_from_ats_subdomain(domain: str) -> str:
+    lowered = (domain or "").lower()
+    ats_suffixes = (
+        "teamtailor-mail.com",
+        "teamtailor.com",
+        "greenhouse-mail.io",
+        "greenhouse.io",
+        "recruitee.com",
+    )
+    for suffix in ats_suffixes:
+        if lowered.endswith(suffix):
+            remainder = lowered[: -len(suffix)].strip(".")
+            if remainder:
+                return _clean_company_name(remainder.split(".")[-1])
+    return ""
+
+
+def _is_intermediary_domain(domain: str) -> bool:
+    return (
+        not domain
+        or domain in FREE_DOMAINS
+        or domain in NON_EMPLOYER_TOOL_DOMAINS
+        or domain in ATS_HINTS
+        or any(h in domain for h in ATS_HINTS)
+    )
+
+
+def _clean_company_name(value: str) -> str:
+    name = re.sub(r"\s+", " ", (value or "").strip(" .,-|")).lower()
+    if not name:
+        return ""
+    if name in INVALID_COMPANY_NAMES:
+        return ""
+    if len(name.split()) > 5:
+        return ""
+    if any(phrase in name for phrase in ROLE_GARBAGE_PHRASES):
+        return ""
+    return name
+
+
+def _clean_role_title(value: str) -> str:
+    role = _norm_text(value or "")
+    if not role:
+        return ""
+    if len(role.split()) > 12:
+        return ""
+    if any(phrase in role for phrase in ROLE_GARBAGE_PHRASES):
+        return ""
+    return role
+
+
 def _extract_company_name_from_text(subject: str, snippet: str) -> str:
     text = f"{subject} | {snippet}"
     patterns = [
         r"\bwith\s+([A-Z][A-Za-z0-9& .'-]{1,64})",
         r"\bat\s+([A-Z][A-Za-z0-9& .'-]{1,64})",
+        r"\bto\s+([A-Z][A-Za-z0-9& .'-]{1,64})",
         r"\bjoining\s+([A-Z][A-Za-z0-9& .'-]{1,64})",
     ]
     for pattern in patterns:
         m = re.search(pattern, text)
         if m:
-            name = re.sub(r"\s+", " ", m.group(1)).strip(" .,-|")
+            name = _clean_company_name(m.group(1))
             if name:
-                return name.lower()
+                return name
     return ""
 
 
@@ -209,7 +293,7 @@ def _extract_company_domain_meta(subject: str, snippet: str, sender_domain: str)
     text = f"{subject} {snippet}".lower()
     # Direct domain mention in text is stronger than sender-domain fallback.
     for token in re.findall(r"\b([a-z0-9][a-z0-9.-]+\.[a-z]{2,})\b", text):
-        if token in FREE_DOMAINS:
+        if token in FREE_DOMAINS or token in ATS_HINTS or any(h in token for h in ATS_HINTS):
             continue
         return token, "subject_regex"
     if sender_domain and sender_domain not in FREE_DOMAINS:
@@ -224,7 +308,9 @@ def _extract_role_meta(subject: str, snippet: str, domain: str) -> tuple[str, st
     for pattern in ROLE_PATTERNS:
         m = re.search(pattern, text, flags=re.IGNORECASE)
         if m:
-            role = _norm_text(m.group(1))
+            role = _clean_role_title(m.group(1))
+            if not role:
+                continue
             is_ats_template = ("role of" in text.lower() or "position of" in text.lower() or "position:" in text.lower()) and (
                 (domain in ATS_HINTS) or any(h in domain for h in ATS_HINTS)
             )
@@ -238,15 +324,17 @@ def get_application_key_info(msg: NormalizedMessage) -> ApplicationKeyInfo:
     role, role_source, role_conf = _extract_role_meta(msg.subject, msg.snippet, sender_domain)
     extracted_company_domain, company_domain_source = _extract_company_domain_meta(msg.subject, msg.snippet, sender_domain)
     text_company_name = _extract_company_name_from_text(msg.subject, msg.snippet)
-    company_name = _company_name_from_domain(extracted_company_domain) if extracted_company_domain else ""
+    company_name = _clean_company_name(_company_name_from_domain(extracted_company_domain)) if extracted_company_domain else ""
     if text_company_name and (
         company_domain_source == "ats_template"
         or not company_name
         or (company_name and text_company_name != company_name)
     ):
         company_name = text_company_name
-    if not company_name and sender_domain:
-        company_name = _company_name_from_domain(sender_domain)
+    if not company_name and sender_domain and company_domain_source == "ats_template":
+        company_name = _company_name_from_ats_subdomain(sender_domain)
+    if not company_name and sender_domain and not _is_intermediary_domain(sender_domain):
+        company_name = _clean_company_name(_company_name_from_domain(sender_domain))
 
     # Prefer explicit company names from subject/body over intermediary sender domains.
     if company_name and role:
@@ -343,6 +431,9 @@ def _is_calendar_or_survey_noise(msg: NormalizedMessage) -> tuple[bool, str]:
     ):
         return True, "gmail_calendar_noise"
 
+    if domain in FREE_DOMAINS and subject.startswith("re:") and "interview" in subject:
+        return True, "free_domain_interview_reply"
+
     return False, ""
 
 
@@ -437,6 +528,7 @@ def classify_message_with_meta(msg: NormalizedMessage) -> ClassificationDecision
             "survey_feedback_subject": "ignore:survey_feedback_subject",
             "survey_domain": "ignore:survey_domain",
             "gmail_calendar_noise": "ignore:gmail_calendar_noise",
+            "free_domain_interview_reply": "ignore:free_domain_interview_reply",
         }
         return ClassificationDecision(
             events=[],

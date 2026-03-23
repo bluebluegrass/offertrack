@@ -12,6 +12,7 @@ from skills.job_tracker.types import NormalizedMessage
 
 ATS_WHITELIST = {
     "greenhouse.io",
+    "greenhouse-mail.io",
     "lever.co",
     "ashbyhq.com",
     "workday.com",
@@ -22,6 +23,7 @@ ATS_WHITELIST = {
     "jobvite.com",
     "successfactors.com",
     "teamtailor.com",
+    "teamtailor-mail.com",
     "recruitee.com",
     "hackerrank.com",
     "hackerrankforwork.com",

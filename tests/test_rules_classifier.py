@@ -162,3 +162,35 @@ def test_pulsepoint_sql_test_failure_is_classified_as_rejection():
     assert decision.events and decision.events[0].type == "rejection"
     assert decision.events[0].stage == "Rejected"
     assert decision.rule_id.startswith("rejection:")
+
+
+def test_free_domain_interview_reply_is_ignored():
+    msg = _msg(
+        "Re: Cadence Solutions Interview Confirmation",
+        "Thanks, this works for me.",
+        sender="candidate@gmail.com",
+    )
+    decision = classify_message_with_meta(msg)
+    assert decision.ignored is True
+    assert decision.rule_id == "ignore:free_domain_interview_reply"
+    assert not decision.events
+
+
+def test_ashby_subject_extracts_employer_not_platform_name():
+    msg = _msg(
+        "Thank you for your Application to Dune",
+        "We received your application.",
+        sender="no-reply@ashbyhq.com",
+    )
+    key_info = get_application_key_info(msg)
+    assert key_info.company_name == "dune"
+
+
+def test_teamtailor_mail_subject_extracts_employer_not_platform_name():
+    msg = _msg(
+        "Update on your application for Podimo",
+        "We have an update about your application.",
+        sender="algirdas.zalatoris@podimo.teamtailor-mail.com",
+    )
+    key_info = get_application_key_info(msg)
+    assert key_info.company_name == "podimo"
