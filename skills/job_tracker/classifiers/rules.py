@@ -212,11 +212,6 @@ def _extract_domain(from_email: str) -> str:
     return m.group(1).lower() if m else ""
 
 
-def _extract_localpart(from_email: str) -> str:
-    m = re.search(r"([A-Za-z0-9_.+-]+)@", from_email)
-    return m.group(1).lower() if m else ""
-
-
 def _company_name_from_domain(domain: str) -> str:
     if not domain:
         return ""
@@ -241,19 +236,6 @@ def _company_name_from_ats_subdomain(domain: str) -> str:
             if remainder:
                 return _clean_company_name(remainder.split(".")[-1])
     return ""
-
-
-def _company_name_from_sender_localpart(from_email: str) -> str:
-    local = _extract_localpart(from_email)
-    if not local:
-        return ""
-    local = re.sub(r"\+.*$", "", local)
-    local = re.sub(r"^(workingat|careers?|jobs?|noreply|no-reply|notifications?)", "", local)
-    local = re.sub(r"(autoreply|notification|notifications?|careers?|jobs?)$", "", local)
-    candidate = _clean_company_name(local.replace(".", " ").replace("-", " ").replace("_", " "))
-    if not candidate or candidate in INVALID_COMPANY_NAMES:
-        return ""
-    return candidate
 
 
 def _is_intermediary_domain(domain: str) -> bool:
@@ -351,8 +333,6 @@ def get_application_key_info(msg: NormalizedMessage) -> ApplicationKeyInfo:
         company_name = text_company_name
     if not company_name and sender_domain and company_domain_source == "ats_template":
         company_name = _company_name_from_ats_subdomain(sender_domain)
-    if not company_name and sender_domain and company_domain_source == "ats_template":
-        company_name = _company_name_from_sender_localpart(msg.from_email)
     if not company_name and sender_domain and not _is_intermediary_domain(sender_domain):
         company_name = _clean_company_name(_company_name_from_domain(sender_domain))
 
@@ -568,7 +548,7 @@ def classify_message_with_meta(msg: NormalizedMessage) -> ClassificationDecision
             rule_id="ignore:non_employer_tool_marketing",
         )
 
-    text = f"{msg.subject} {msg.snippet} {msg.body} {msg.from_email}"
+    text = f"{msg.subject} {msg.snippet} {msg.from_email}"
     lowered = text.lower()
 
     # Priority order:

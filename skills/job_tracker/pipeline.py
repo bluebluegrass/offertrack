@@ -155,7 +155,6 @@ def run(
         cred_path = Path(credentials_path).expanduser().resolve()
         if not cred_path.exists():
             raise ValueError(f"credentials.json missing: {cred_path}")
-        body_chars = min(ai_max_body_chars, 7000) if ai_classify else min(ai_max_body_chars, 2500)
         raw_messages = fetch_messages(
             email=email,
             start_date=start_date,
@@ -164,8 +163,8 @@ def run(
             token_dir=token_dir,
             max_messages=max_messages,
             gmail_query_mode=gmail_query_mode,
-            include_body=True,
-            max_body_chars=body_chars,
+            include_body=ai_classify,
+            max_body_chars=min(ai_max_body_chars, 7000),
             allow_interactive_auth=allow_interactive_auth,
         )
     elif source == "outlook":
@@ -176,7 +175,7 @@ def run(
             end_date=end_date,
             token_dir=token_dir,
             max_messages=max_messages,
-            include_body=True,
+            include_body=ai_classify,
         )
     elif source == "sample":
         fetch_started = time.monotonic()
