@@ -10,9 +10,7 @@ import os
 import secrets
 import shutil
 import tempfile
-import time
 from pathlib import Path
-from typing import Literal
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request as UrlRequest
@@ -48,17 +46,6 @@ class ScanRequest(BaseModel):
     title: str = "Job Search Summary"
     email: str = ""
     credentials_path: str = "credentials.json"
-    scan_mode: Literal["fast", "enhanced"] = "fast"
-    max_messages: int | None = None
-
-
-class ScanCompareRequest(BaseModel):
-    start_date: str
-    end_date: str
-    title: str = "Job Search Summary"
-    email: str = ""
-    credentials_path: str = "credentials.json"
-    max_messages: int | None = None
 
 
 app = FastAPI(title="OfferTracker API", version="0.2.0")
@@ -97,206 +84,6 @@ def _read_png_data_url(path: Path) -> str:
     raw = path.read_bytes()
     encoded = base64.b64encode(raw).decode("ascii")
     return f"data:image/png;base64,{encoded}"
-
-
-def _normalize_compare_text(value: str) -> str:
-    return " ".join((value or "").strip().lower().split())
-
-
-def _read_summary_for_mode(transient_out: Path, *, ai_mode: bool) -> dict[str, int]:
-    if ai_mode:
-        payload = _read_json(transient_out / "ai_result_summary.json")
-        return {
-            "applications": int(payload.get("applications", 0)),
-            "interviews": int(payload.get("interviews", 0)),
-            "rejections_total": int(payload.get("rejections_total", 0)),
-            "offers": int(payload.get("offers", 0)),
-            "no_response": int(payload.get("no_response", 0)),
-        }
-
-    payload = _read_json(transient_out / "metrics.json")
-    metrics = payload.get("metrics", {})
-    if not isinstance(metrics, dict):
-        metrics = {}
-    return {
-        "applications": int(metrics.get("applications", 0)),
-        "interviews": int(metrics.get("interviews", 0)),
-        "rejections_total": int(metrics.get("rejected", 0)),
-        "offers": int(metrics.get("offers", 0)),
-        "no_response": int(metrics.get("no_replies", 0)),
-    }
-
-
-def _read_application_rows_for_mode(transient_out: Path, *, ai_mode: bool) -> list[dict[str, str]]:
-    if ai_mode:
-        rows = _read_csv_rows(transient_out / "ai_application_table.csv")
-        return [
-            {
-                "company": r.get("company", ""),
-                "position": r.get("position", ""),
-                "current_status": r.get("current_status", ""),
-                "evidence_subject": r.get("evidence_subject", ""),
-            }
-            for r in rows
-        ]
-
-    rows = _read_csv_rows(transient_out / "application_summary.csv")
-    return [
-        {
-            "company": r.get("company_name", ""),
-            "position": r.get("role_title", ""),
-            "current_status": r.get("current_status", ""),
-            "evidence_subject": r.get("evidence_subject", ""),
-        }
-        for r in rows
-    ]
-
-
-def _build_application_index(rows: list[dict[str, str]]) -> dict[tuple[str, str], dict[str, str]]:
-    index: dict[tuple[str, str], dict[str, str]] = {}
-    for row in rows:
-        key = (_normalize_compare_text(row.get("company", "")), _normalize_compare_text(row.get("position", "")))
-        index[key] = row
-    return index
-
-
-def _compare_application_rows(
-    fast_rows: list[dict[str, str]],
-    enhanced_rows: list[dict[str, str]],
-) -> dict[str, object]:
-    fast_index = _build_application_index(fast_rows)
-    enhanced_index = _build_application_index(enhanced_rows)
-
-    missing_in_fast: list[dict[str, str]] = []
-    extra_in_fast: list[dict[str, str]] = []
-    status_changed: list[dict[str, str]] = []
-
-    for key, enhanced_row in enhanced_index.items():
-        fast_row = fast_index.get(key)
-        if fast_row is None:
-            missing_in_fast.append(
-                {
-                    "company": enhanced_row.get("company", ""),
-                    "position": enhanced_row.get("position", ""),
-                    "enhanced_status": enhanced_row.get("current_status", ""),
-                }
-            )
-            continue
-        if _normalize_compare_text(fast_row.get("current_status", "")) != _normalize_compare_text(
-            enhanced_row.get("current_status", "")
-        ):
-            status_changed.append(
-                {
-                    "company": enhanced_row.get("company", ""),
-                    "position": enhanced_row.get("position", ""),
-                    "fast_status": fast_row.get("current_status", ""),
-                    "enhanced_status": enhanced_row.get("current_status", ""),
-                }
-            )
-
-    for key, fast_row in fast_index.items():
-        if key in enhanced_index:
-            continue
-        extra_in_fast.append(
-            {
-                "company": fast_row.get("company", ""),
-                "position": fast_row.get("position", ""),
-                "fast_status": fast_row.get("current_status", ""),
-            }
-        )
-
-    return {
-        "fast_count": len(fast_rows),
-        "enhanced_count": len(enhanced_rows),
-        "missing_in_fast": missing_in_fast,
-        "extra_in_fast": extra_in_fast,
-        "status_changed": status_changed,
-    }
-
-
-def _build_summary_diff(fast_summary: dict[str, int], enhanced_summary: dict[str, int]) -> dict[str, dict[str, int]]:
-    out: dict[str, dict[str, int]] = {}
-    for key in ("applications", "interviews", "rejections_total", "offers", "no_response"):
-        fast_value = int(fast_summary.get(key, 0))
-        enhanced_value = int(enhanced_summary.get(key, 0))
-        out[key] = {
-            "fast": fast_value,
-            "enhanced": enhanced_value,
-            "delta": fast_value - enhanced_value,
-        }
-    return out
-
-
-def _run_scan_mode(
-    *,
-    payload: ScanRequest,
-    provider: str,
-    session_id: str,
-    session_payload: dict[str, object],
-    request: Request,
-    scan_mode: Literal["fast", "enhanced"],
-) -> tuple[dict[str, object], dict[str, object]]:
-    token_json = session_payload.get("token_json")
-    if not token_json:
-        raise HTTPException(status_code=401, detail=f"{_provider_label(provider)} session token is missing. Reconnect.")
-
-    runtime_base = (
-        os.getenv("OFFERTRACK_RUNTIME_DIR", "").strip()
-        or os.getenv("GMAIL_RUNTIME_DIR", "").strip()
-        or "/tmp/offertracker_runtime"
-    )
-    runtime_root = Path(runtime_base).expanduser().resolve() / session_id
-    token_dir = runtime_root / "tokens"
-    token_dir.mkdir(parents=True, exist_ok=True)
-    token_filename = "outlook_token_session.json" if provider == "outlook" else "gmail_token_session.json"
-    token_path = token_dir / token_filename
-    token_path.write_text(json.dumps(token_json), encoding="utf-8")
-    transient_out = Path(tempfile.mkdtemp(prefix=f"scan_{scan_mode}_", dir=str(runtime_root)))
-    ai_classify = scan_mode == "enhanced"
-    resolved_max_messages = payload.max_messages if payload.max_messages is not None else 300
-
-    try:
-        run_kwargs: dict[str, object] = {
-            "source": provider,
-            "start": payload.start_date,
-            "end": payload.end_date,
-            "email": None,
-            "out_dir": str(transient_out),
-            "title": payload.title,
-            "ai_classify": ai_classify,
-            "max_messages": resolved_max_messages,
-            "token_dir": str(token_path),
-            "relevant_emails_path": str(transient_out / "relevant_emails.csv"),
-            "ai_message_classification_path": str(transient_out / "ai_message_classification.csv"),
-            "ai_application_table_path": str(transient_out / "ai_application_table.csv"),
-            "ai_result_summary_path": str(transient_out / "ai_result_summary.json"),
-            "ai_sankey_path": str(transient_out / "ai_sankey.png"),
-            "allow_interactive_auth": False,
-        }
-        if provider == "gmail":
-            run_kwargs["credentials_path"] = _resolve_credentials_path(payload.credentials_path)
-        run(**run_kwargs)
-        result_payload = {
-            "summary": _read_summary_for_mode(transient_out, ai_mode=ai_classify),
-            "application_rows": _read_application_rows_for_mode(transient_out, ai_mode=ai_classify),
-            "message_rows": _read_csv_rows(transient_out / "ai_message_classification.csv") if ai_classify else [],
-        }
-        meta = {
-            "scan_mode": scan_mode,
-            "max_messages": resolved_max_messages,
-            "artifacts_dir": str(transient_out),
-        }
-        return result_payload, meta
-    finally:
-        try:
-            if token_path.exists():
-                refreshed = json.loads(token_path.read_text(encoding="utf-8"))
-                updated_payload = dict(session_payload)
-                updated_payload["token_json"] = refreshed
-                save_session_payload(session_id, updated_payload)
-        except Exception:  # noqa: BLE001
-            pass
-        token_path.unlink(missing_ok=True)
 
 
 def _resolve_credentials_path(requested_path: str) -> str:
@@ -676,142 +463,80 @@ def auth_logout(request: Request) -> JSONResponse:
 
 @app.post("/api/scan")
 def run_scan(payload: ScanRequest, request: Request) -> dict[str, object]:
-    request_started = time.monotonic()
-    pipeline_started = time.monotonic()
     session_id, session_payload = _require_session(request)
 
     if not payload.start_date or not payload.end_date:
         raise HTTPException(status_code=400, detail="start_date and end_date are required")
 
     provider = _normalize_provider(session_payload.get("provider"))
-    scan_mode = payload.scan_mode
+
+    token_json = session_payload.get("token_json")
+    if not token_json:
+        raise HTTPException(status_code=401, detail=f"{_provider_label(provider)} session token is missing. Reconnect.")
+
+    runtime_base = (
+        os.getenv("OFFERTRACK_RUNTIME_DIR", "").strip()
+        or os.getenv("GMAIL_RUNTIME_DIR", "").strip()
+        or "/tmp/offertracker_runtime"
+    )
+    runtime_root = Path(runtime_base).expanduser().resolve() / session_id
+    token_dir = runtime_root / "tokens"
+    token_dir.mkdir(parents=True, exist_ok=True)
+    token_filename = "outlook_token_session.json" if provider == "outlook" else "gmail_token_session.json"
+    token_path = token_dir / token_filename
+    token_path.write_text(json.dumps(token_json), encoding="utf-8")
+
+    transient_out = Path(tempfile.mkdtemp(prefix="scan_", dir=str(runtime_root)))
 
     try:
-        scan_result, scan_meta = _run_scan_mode(
-            payload=payload,
-            provider=provider,
-            session_id=session_id,
-            session_payload=session_payload,
-            request=request,
-            scan_mode=scan_mode,
-        )
-        pipeline_ms = int((time.monotonic() - pipeline_started) * 1000)
-        print(
-            "[SCAN PIPELINE] "
-            f"provider={provider} scan_mode={scan_mode} max_messages={scan_meta['max_messages']} "
-            f"date_range={payload.start_date}..{payload.end_date} pipeline_ms={pipeline_ms}",
-            flush=True,
-        )
-    except HTTPException:
-        raise
+        run_kwargs: dict[str, object] = {
+            "source": provider,
+            "start": payload.start_date,
+            "end": payload.end_date,
+            "email": None,
+            "out_dir": str(transient_out),
+            "title": payload.title,
+            "ai_classify": True,
+            "token_dir": str(token_path),
+            "relevant_emails_path": str(transient_out / "relevant_emails.csv"),
+            "ai_message_classification_path": str(transient_out / "ai_message_classification.csv"),
+            "ai_application_table_path": str(transient_out / "ai_application_table.csv"),
+            "ai_result_summary_path": str(transient_out / "ai_result_summary.json"),
+            "ai_sankey_path": str(transient_out / "ai_sankey.png"),
+            "allow_interactive_auth": False,
+        }
+        if provider == "gmail":
+            run_kwargs["credentials_path"] = _resolve_credentials_path(payload.credentials_path)
+        run(**run_kwargs)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     finally:
-        artifacts_dir = Path(scan_meta["artifacts_dir"]) if "scan_meta" in locals() else None
-        if artifacts_dir is not None:
-            runtime_root = artifacts_dir.parent
-            token_dir = runtime_root / "tokens"
-            shutil.rmtree(artifacts_dir, ignore_errors=True)
-            if token_dir.exists():
-                shutil.rmtree(token_dir, ignore_errors=True)
-            if runtime_root.exists() and not any(runtime_root.iterdir()):
-                runtime_root.rmdir()
+        try:
+            if token_path.exists():
+                refreshed = json.loads(token_path.read_text(encoding="utf-8"))
+                updated_payload = dict(session_payload)
+                updated_payload["token_json"] = refreshed
+                save_session_payload(session_id, updated_payload)
+        except Exception:  # noqa: BLE001
+            pass
+        token_path.unlink(missing_ok=True)
+    summary = _read_json(transient_out / "ai_result_summary.json")
+    application_rows = _read_csv_rows(transient_out / "ai_application_table.csv")
+    message_rows = _read_csv_rows(transient_out / "ai_message_classification.csv")
+    sankey_image_data_url = _read_png_data_url(transient_out / "ai_sankey.png")
 
-    response_build_ms = int((time.monotonic() - request_started) * 1000)
-    print(
-        "[SCAN COMPLETE] "
-        f"provider={provider} scan_mode={scan_mode} max_messages={scan_meta['max_messages']} "
-        f"applications={len(scan_result['application_rows'])} messages={len(scan_result['message_rows'])} total_ms={response_build_ms}",
-        flush=True,
-    )
+    # Keep scan artifacts transient: remove generated files immediately after response payload is built.
+    shutil.rmtree(transient_out, ignore_errors=True)
+    if token_dir.exists():
+        shutil.rmtree(token_dir, ignore_errors=True)
+    if runtime_root.exists() and not any(runtime_root.iterdir()):
+        runtime_root.rmdir()
 
     return {
         "ok": True,
         "base_path": "",
-        "summary": scan_result["summary"],
-        "application_rows": scan_result["application_rows"],
-        "message_rows": scan_result["message_rows"],
-        "sankey_image_data_url": "",
+        "summary": summary,
+        "application_rows": application_rows,
+        "message_rows": message_rows,
+        "sankey_image_data_url": sankey_image_data_url,
     }
-
-
-@app.post("/api/scan/compare")
-def compare_scan_modes(payload: ScanCompareRequest, request: Request) -> dict[str, object]:
-    print(f"[COMPARE START] POST /api/scan/compare invoked for {payload.start_date} to {payload.end_date}", flush=True)
-    session_id, session_payload = _require_session(request)
-
-    if not payload.start_date or not payload.end_date:
-        print("[COMPARE ERROR] Missing start_date or end_date", flush=True)
-        raise HTTPException(status_code=400, detail="start_date and end_date are required")
-
-    provider = _normalize_provider(session_payload.get("provider"))
-    shared_payload = ScanRequest(
-        start_date=payload.start_date,
-        end_date=payload.end_date,
-        title=payload.title,
-        email=payload.email,
-        credentials_path=payload.credentials_path,
-        max_messages=payload.max_messages,
-    )
-
-    artifacts_to_cleanup: list[Path] = []
-    try:
-        fast_result, fast_meta = _run_scan_mode(
-            payload=shared_payload,
-            provider=provider,
-            session_id=session_id,
-            session_payload=session_payload,
-            request=request,
-            scan_mode="fast",
-        )
-        artifacts_to_cleanup.append(Path(fast_meta["artifacts_dir"]))
-
-        enhanced_result, enhanced_meta = _run_scan_mode(
-            payload=shared_payload,
-            provider=provider,
-            session_id=session_id,
-            session_payload=session_payload,
-            request=request,
-            scan_mode="enhanced",
-        )
-        artifacts_to_cleanup.append(Path(enhanced_meta["artifacts_dir"]))
-
-        print("[COMPARE SUCCESS] Returning JSON diff payload", flush=True)
-        return {
-            "ok": True,
-            "data": {
-                "config": {
-                    "provider": provider,
-                    "start_date": payload.start_date,
-                    "end_date": payload.end_date,
-                    "max_messages": fast_meta["max_messages"],
-                },
-                "fast": fast_result,
-                "enhanced": enhanced_result,
-                "summary_diff": _build_summary_diff(
-                    fast_result["summary"],
-                    enhanced_result["summary"],
-                ),
-                "application_diff": _compare_application_rows(
-                    fast_result["application_rows"],
-                    enhanced_result["application_rows"],
-                ),
-            },
-        }
-    except HTTPException as exc:
-        print(f"[COMPARE EXCEPTION] HTTPException {exc.status_code}: {exc.detail}", flush=True)
-        raise
-    except Exception as exc:  # noqa: BLE001
-        print(f"[COMPARE EXCEPTION] Unhandled Exception: {exc}", flush=True)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    finally:
-        runtime_roots: set[Path] = set()
-        for artifacts_dir in artifacts_to_cleanup:
-            runtime_roots.add(artifacts_dir.parent)
-            shutil.rmtree(artifacts_dir, ignore_errors=True)
-        for runtime_root in runtime_roots:
-            token_dir = runtime_root / "tokens"
-            if token_dir.exists():
-                shutil.rmtree(token_dir, ignore_errors=True)
-            if runtime_root.exists() and not any(runtime_root.iterdir()):
-                runtime_root.rmdir()
