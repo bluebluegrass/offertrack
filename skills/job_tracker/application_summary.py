@@ -13,19 +13,7 @@ from pathlib import Path
 
 from skills.job_tracker.types import Event, FunnelMetrics, FunnelRates
 
-ATS_DOMAINS = {
-    "myworkday.com",
-    "workday.com",
-    "greenhouse.io",
-    "greenhouse-mail.io",
-    "lever.co",
-    "icims.com",
-    "icims.eu",
-    "ashbyhq.com",
-    "teamtailor-mail.com",
-    "teamtailor.com",
-    "recruitee.com",
-}
+ATS_DOMAINS = {"myworkday.com", "workday.com", "greenhouse.io", "lever.co", "icims.com", "icims.eu", "ashbyhq.com"}
 
 STATUS_PRIORITY = {
     "Applied": 10,
@@ -69,7 +57,6 @@ def _extract_company_name_from_subject(subject: str) -> str:
         r"\brole at ([A-Z][A-Za-z0-9& .'-]{1,64})",
         r"\bposition at ([A-Z][A-Za-z0-9& .'-]{1,64})",
         r"\bat ([A-Z][A-Za-z0-9& .'-]{1,64})",
-        r"\bto ([A-Z][A-Za-z0-9& .'-]{1,64})",
     ]
     for p in patterns:
         m = re.search(p, subject)
