@@ -4,7 +4,7 @@ from skills.job_tracker.classifiers.rules import classify_message, classify_mess
 from skills.job_tracker.types import NormalizedMessage
 
 
-def _msg(subject: str, snippet: str = "", sender: str = "recruiting@company.com") -> NormalizedMessage:
+def _msg(subject: str, snippet: str = "", sender: str = "recruiting@company.com", body: str = "") -> NormalizedMessage:
     return NormalizedMessage(
         id="m1",
         date=datetime.now(timezone.utc),
@@ -12,6 +12,7 @@ def _msg(subject: str, snippet: str = "", sender: str = "recruiting@company.com"
         subject=subject,
         snippet=snippet,
         thread_id="t1",
+        body=body,
     )
 
 
@@ -194,3 +195,25 @@ def test_teamtailor_mail_subject_extracts_employer_not_platform_name():
     )
     key_info = get_application_key_info(msg)
     assert key_info.company_name == "podimo"
+
+
+def test_rejection_can_be_detected_from_body_when_snippet_is_weak():
+    msg = _msg(
+        "Moss - Application Update",
+        "We wanted to follow up.",
+        sender="careers@getmoss.com",
+        body="After careful consideration, we regret to inform you that we will not be moving forward.",
+    )
+    decision = classify_message_with_meta(msg)
+    assert decision.ignored is False
+    assert decision.events and decision.events[0].type == "rejection"
+
+
+def test_workday_sender_localpart_can_supply_company_name():
+    msg = _msg(
+        "Update on your application for Senior Analytics Engineer",
+        "Thank you for your application.",
+        sender="fedex@myworkday.com",
+    )
+    key_info = get_application_key_info(msg)
+    assert key_info.company_name == "fedex"
