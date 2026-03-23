@@ -78,6 +78,40 @@ def _extract_company_name_from_subject(subject: str) -> str:
     return ""
 
 
+def _canonical_company(value: str) -> str:
+    company = _normalize_text(value or "")
+    replacements = {
+        "booking com": "booking",
+        "just eat takeaway com": "takeaway",
+        "takeaway com": "takeaway",
+        "dentsuaegis": "dentsu",
+        "xebia group": "xebia",
+        "aegon": "aegon transamerica",
+    }
+    return replacements.get(company, company)
+
+
+def _is_weak_role(role: str) -> bool:
+    role_norm = _normalize_text(role or "")
+    if not role_norm:
+        return True
+    weak_prefixes = (
+        "your interview with",
+        "interview with",
+        "recruiter video interview",
+        "virtual hiring manager interview",
+        "business interview",
+        "workflow design",
+        "confirmation remote interview",
+        "recruitment phone screen",
+    )
+    if role_norm.startswith(weak_prefixes):
+        return True
+    if role_norm in {"podimo", "dune", "at aegon"}:
+        return True
+    return False
+
+
 def _fallback_app_id(row: SummaryMessageRow) -> str:
     if row.role_title_confidence >= 0.6 and row.extracted_company_domain and row.role_title:
         return f"key:{_normalize_text(row.extracted_company_domain)}|{_normalize_text(row.role_title)}"
@@ -86,7 +120,7 @@ def _fallback_app_id(row: SummaryMessageRow) -> str:
 
 
 def _application_id(row: SummaryMessageRow) -> str:
-    if row.role_title_confidence >= 0.6 and row.application_key:
+    if row.role_title_confidence >= 0.6 and row.application_key and not _is_weak_role(row.role_title):
         return f"key:{_normalize_text(row.application_key)}"
     if row.thread_id:
         return f"thread:{row.thread_id}"
@@ -149,27 +183,27 @@ def build_application_summary_rows(messages: list[SummaryMessageRow], events: li
         msgs = by_app_messages.get(app_id, [])
         names = [m.extracted_company_name for m in msgs if m.extracted_company_name]
         if names:
-            return Counter(names).most_common(1)[0][0]
+            return _canonical_company(Counter(names).most_common(1)[0][0])
         domains = [m.extracted_company_domain for m in msgs if m.extracted_company_domain]
         if domains:
             parts = domains[0].split(".")
-            return parts[-2] if len(parts) >= 2 else domains[0]
+            return _canonical_company(parts[-2] if len(parts) >= 2 else domains[0])
         from_domains = [m.from_domain for m in msgs if m.from_domain]
         if from_domains:
             parts = from_domains[0].split(".")
-            return parts[-2] if len(parts) >= 2 else from_domains[0]
+            return _canonical_company(parts[-2] if len(parts) >= 2 else from_domains[0])
         return ""
 
     candidate_by_company: dict[str, list[str]] = defaultdict(list)
     for app_id, msgs in by_app_messages.items():
-        if any(m.role_title and m.role_title_confidence >= 0.6 for m in msgs):
+        if any(m.role_title and m.role_title_confidence >= 0.6 and not _is_weak_role(m.role_title) for m in msgs):
             company = _primary_company(app_id)
             if company:
                 candidate_by_company[company].append(app_id)
 
     for app_id in list(by_app_messages.keys()):
         msgs = by_app_messages.get(app_id, [])
-        if not msgs or any(m.role_title and m.role_title_confidence >= 0.6 for m in msgs):
+        if not msgs or any(m.role_title and m.role_title_confidence >= 0.6 and not _is_weak_role(m.role_title) for m in msgs):
             continue
         company = _primary_company(app_id)
         candidates = candidate_by_company.get(company, [])
@@ -210,9 +244,10 @@ def build_application_summary_rows(messages: list[SummaryMessageRow], events: li
         if not company_name and company_domain:
             parts = company_domain.split(".")
             company_name = parts[-2] if len(parts) >= 2 else company_domain
+        company_name = _canonical_company(company_name)
 
         role_candidates = sorted(
-            [m for m in msgs if m.role_title],
+            [m for m in msgs if m.role_title and not _is_weak_role(m.role_title)],
             key=lambda m: (m.role_title_confidence, m.date),
             reverse=True,
         )

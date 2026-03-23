@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import csv
+import io
 import json
 import os
 import secrets
@@ -18,7 +19,7 @@ from urllib.parse import urlencode
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
@@ -36,7 +37,8 @@ from api.auth_session import (
     verify_state,
 )
 from skills.job_tracker.pipeline import run
-from skills.job_tracker.sources.gmail_readonly import SCOPES
+from skills.job_tracker.sources.gmail_readonly import SCOPES, fetch_messages as fetch_gmail_messages
+from skills.job_tracker.sources.outlook_graph import fetch_messages as fetch_outlook_messages
 
 SUPPORTED_MAIL_PROVIDERS = {"gmail", "outlook"}
 OUTLOOK_SCOPES = ["openid", "profile", "email", "offline_access", "Mail.Read"]
@@ -56,6 +58,14 @@ class ScanCompareRequest(BaseModel):
     start_date: str
     end_date: str
     title: str = "Job Search Summary"
+    email: str = ""
+    credentials_path: str = "credentials.json"
+    max_messages: int | None = None
+
+
+class ExportFixtureRequest(BaseModel):
+    start_date: str
+    end_date: str
     email: str = ""
     credentials_path: str = "credentials.json"
     max_messages: int | None = None
@@ -297,6 +307,115 @@ def _run_scan_mode(
         except Exception:  # noqa: BLE001
             pass
         token_path.unlink(missing_ok=True)
+
+
+def _export_fixture_rows(
+    *,
+    payload: ExportFixtureRequest,
+    provider: str,
+    session_id: str,
+    session_payload: dict[str, object],
+) -> tuple[list[dict[str, object]], int]:
+    token_json = session_payload.get("token_json")
+    if not token_json:
+        raise HTTPException(status_code=401, detail=f"{_provider_label(provider)} session token is missing. Reconnect.")
+
+    runtime_base = (
+        os.getenv("OFFERTRACK_RUNTIME_DIR", "").strip()
+        or os.getenv("GMAIL_RUNTIME_DIR", "").strip()
+        or "/tmp/offertracker_runtime"
+    )
+    runtime_root = Path(runtime_base).expanduser().resolve() / session_id
+    token_dir = runtime_root / "tokens"
+    token_dir.mkdir(parents=True, exist_ok=True)
+    token_filename = "outlook_token_session.json" if provider == "outlook" else "gmail_token_session.json"
+    token_path = token_dir / token_filename
+    token_path.write_text(json.dumps(token_json), encoding="utf-8")
+    resolved_max_messages = payload.max_messages if payload.max_messages is not None else 300
+
+    try:
+        fetch_kwargs: dict[str, object] = {
+            "email": payload.email or None,
+            "start_date": _parse_date(payload.start_date),
+            "end_date": _parse_date(payload.end_date),
+            "token_dir": str(token_path),
+            "max_messages": resolved_max_messages,
+            "include_body": True,
+        }
+        if provider == "gmail":
+            fetch_kwargs["credentials_path"] = _resolve_credentials_path(payload.credentials_path)
+            fetch_kwargs["allow_interactive_auth"] = False
+            fetch_kwargs["max_body_chars"] = 4000
+            rows = fetch_gmail_messages(**fetch_kwargs)
+        else:
+            rows = fetch_outlook_messages(**fetch_kwargs)
+        return rows, resolved_max_messages
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        try:
+            if token_path.exists():
+                refreshed = json.loads(token_path.read_text(encoding="utf-8"))
+                updated_payload = dict(session_payload)
+                updated_payload["token_json"] = refreshed
+                save_session_payload(session_id, updated_payload)
+        except Exception:  # noqa: BLE001
+            pass
+        token_path.unlink(missing_ok=True)
+        if token_dir.exists():
+            shutil.rmtree(token_dir, ignore_errors=True)
+        if runtime_root.exists() and not any(runtime_root.iterdir()):
+            runtime_root.rmdir()
+
+
+def _parse_date(raw: str):
+    from datetime import date
+
+    try:
+        return date.fromisoformat(raw)
+    except ValueError as exc:
+        raise ValueError(f"Invalid ISO date: {raw}") from exc
+
+
+def _fixture_csv_response(
+    *,
+    provider: str,
+    rows: list[dict[str, object]],
+    start_date: str,
+    end_date: str,
+) -> Response:
+    stream = io.StringIO()
+    writer = csv.DictWriter(
+        stream,
+        fieldnames=["id", "thread_id", "date", "from_email", "subject", "snippet", "body"],
+    )
+    writer.writeheader()
+    for row in rows:
+        raw_date = row.get("date")
+        if hasattr(raw_date, "isoformat"):
+            rendered_date = raw_date.isoformat()
+        else:
+            rendered_date = str(raw_date or "")
+        writer.writerow(
+            {
+                "id": row.get("id", ""),
+                "thread_id": row.get("thread_id", ""),
+                "date": rendered_date,
+                "from_email": row.get("from_email", ""),
+                "subject": row.get("subject", ""),
+                "snippet": row.get("snippet", ""),
+                "body": row.get("body", ""),
+            }
+        )
+
+    filename = f"{provider}_fixture_{start_date}_{end_date}.csv"
+    return Response(
+        content=stream.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 def _resolve_credentials_path(requested_path: str) -> str:
@@ -815,3 +934,25 @@ def compare_scan_modes(payload: ScanCompareRequest, request: Request) -> dict[st
                 shutil.rmtree(token_dir, ignore_errors=True)
             if runtime_root.exists() and not any(runtime_root.iterdir()):
                 runtime_root.rmdir()
+
+
+@app.post("/api/scan/export-fixture")
+def export_scan_fixture(payload: ExportFixtureRequest, request: Request) -> Response:
+    session_id, session_payload = _require_session(request)
+
+    if not payload.start_date or not payload.end_date:
+        raise HTTPException(status_code=400, detail="start_date and end_date are required")
+
+    provider = _normalize_provider(session_payload.get("provider"))
+    rows, _resolved_max_messages = _export_fixture_rows(
+        payload=payload,
+        provider=provider,
+        session_id=session_id,
+        session_payload=session_payload,
+    )
+    return _fixture_csv_response(
+        provider=provider,
+        rows=rows,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+    )

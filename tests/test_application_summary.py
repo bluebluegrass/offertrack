@@ -159,3 +159,56 @@ def test_summary_merges_roleless_company_followups_into_unique_role_application(
     assert payload["application_received"] == 1
     assert payload["oa"] == 1
     assert payload["rejection"] == 1
+
+
+def test_summary_merges_weak_interview_logistics_role_into_existing_company_application():
+    messages = [
+        SummaryMessageRow(
+            message_id="m1",
+            thread_id="t-app",
+            date=datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc),
+            from_domain="databricks.com",
+            subject="Next Steps with Databricks: Simeng Dai",
+            extracted_company_name="databricks",
+            extracted_company_domain="databricks.com",
+            role_title="sr solutions engineer fsi benelux",
+            role_title_confidence=0.9,
+            application_key="databricks sr solutions engineer fsi benelux",
+        ),
+        SummaryMessageRow(
+            message_id="m2",
+            thread_id="t-int",
+            date=datetime(2026, 3, 2, 12, 0, tzinfo=timezone.utc),
+            from_domain="databricks.com",
+            subject="Invitation: Databricks: Recruiter Video Interview @ Wed Feb 11, 2026 4:30pm",
+            extracted_company_name="databricks",
+            extracted_company_domain="databricks.com",
+            role_title="recruiter video interview",
+            role_title_confidence=0.0,
+            application_key="thread:t-int",
+        ),
+    ]
+    events = [
+        Event(
+            type="application_received",
+            stage="Applied",
+            occurred_at=datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc),
+            confidence=0.9,
+            evidence={"message_id": "m1", "thread_id": "t-app", "from_domain": "databricks.com", "subject": "Next Steps"},
+            application_key="databricks sr solutions engineer fsi benelux",
+        ),
+        Event(
+            type="interview_invite",
+            stage="Interview",
+            occurred_at=datetime(2026, 3, 2, 12, 0, tzinfo=timezone.utc),
+            confidence=0.95,
+            evidence={"message_id": "m2", "thread_id": "t-int", "from_domain": "databricks.com", "subject": "Recruiter Video Interview"},
+            application_key="thread:t-int",
+        ),
+    ]
+
+    rows = build_application_summary_rows(messages, events)
+    assert len(rows) == 1
+    assert rows[0]["company_name"] == "databricks"
+    assert rows[0]["role_title"] == "sr solutions engineer fsi benelux"
+    assert rows[0]["current_status"] == "Interviewing"
