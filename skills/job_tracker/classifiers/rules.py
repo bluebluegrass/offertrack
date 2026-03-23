@@ -66,19 +66,6 @@ ROLE_GARBAGE_PHRASES = {
     "the effort you",
 }
 
-WEAK_ROLE_PATTERNS = [
-    r"^your interview with\b",
-    r"^interview with\b",
-    r"^recruiter video interview\b",
-    r"^virtual hiring manager interview\b",
-    r"^business interview\b",
-    r"^workflow design\b",
-    r"^confirmation remote interview\b",
-    r"^recruitment phone screen\b",
-    r"^databricks recruiter video interview\b",
-    r"^databricks virtual hiring manager interview\b",
-]
-
 NON_EMPLOYER_TOOL_MARKETING_PHRASES = [
     "track the status of every job application",
     "stay on top of every opportunity",
@@ -303,13 +290,6 @@ def _clean_role_title(value: str) -> str:
     return role
 
 
-def _is_weak_role_title(role: str) -> bool:
-    normalized = _norm_text(role or "")
-    if not normalized:
-        return True
-    return any(re.search(pattern, normalized, flags=re.IGNORECASE) for pattern in WEAK_ROLE_PATTERNS)
-
-
 def _extract_company_name_from_text(subject: str, snippet: str) -> str:
     text = f"{subject} | {snippet}"
     patterns = [
@@ -360,10 +340,6 @@ def _extract_role_meta(subject: str, snippet: str, domain: str) -> tuple[str, st
 def get_application_key_info(msg: NormalizedMessage) -> ApplicationKeyInfo:
     sender_domain = _extract_domain(msg.from_email)
     role, role_source, role_conf = _extract_role_meta(msg.subject, msg.snippet, sender_domain)
-    if _is_weak_role_title(role):
-        role = ""
-        role_source = "weak_interview_logistics"
-        role_conf = 0.0
     extracted_company_domain, company_domain_source = _extract_company_domain_meta(msg.subject, msg.snippet, sender_domain)
     text_company_name = _extract_company_name_from_text(msg.subject, msg.snippet)
     company_name = _clean_company_name(_company_name_from_domain(extracted_company_domain)) if extracted_company_domain else ""

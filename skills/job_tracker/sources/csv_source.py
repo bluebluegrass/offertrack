@@ -19,15 +19,9 @@ def load_csv_messages(csv_path: str, start_date: date, end_date: date) -> list[d
         for idx, row in enumerate(reader, start=1):
             raw_date = (row.get("date") or "").strip()
             try:
-                dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                d = date.fromisoformat(raw_date)
             except ValueError:
-                try:
-                    dt = datetime.combine(date.fromisoformat(raw_date), datetime.min.time()).replace(tzinfo=timezone.utc)
-                except ValueError:
-                    continue
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            d = dt.date()
+                continue
             if d < start_date or d > end_date:
                 continue
 
@@ -41,7 +35,7 @@ def load_csv_messages(csv_path: str, start_date: date, end_date: date) -> list[d
                 {
                     "id": f"csv-{idx}",
                     "thread_id": (row.get("thread_id") or f"csv-{company.lower().replace(' ', '-')}").strip(),
-                    "date": dt.astimezone(timezone.utc),
+                    "date": datetime(d.year, d.month, d.day, tzinfo=timezone.utc),
                     "from_email": sender,
                     "subject": subject,
                     "snippet": snippet,

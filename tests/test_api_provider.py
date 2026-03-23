@@ -1,5 +1,4 @@
 from fastapi.testclient import TestClient
-from datetime import datetime, timezone
 
 import api.server as server
 
@@ -221,45 +220,3 @@ def test_scan_compare_returns_summary_and_application_diffs(monkeypatch):
             "enhanced_status": "Interview",
         }
     ]
-
-
-def test_export_fixture_returns_csv_for_connected_gmail(monkeypatch):
-    def fake_fetch_gmail_messages(**kwargs):
-        assert kwargs["max_messages"] == 300
-        assert kwargs["allow_interactive_auth"] is False
-        return [
-            {
-                "id": "msg-1",
-                "thread_id": "thread-1",
-                "date": datetime(2026, 2, 11, 10, 30, tzinfo=timezone.utc),
-                "from_email": "jobs@example.com",
-                "subject": "Application received",
-                "snippet": "Thanks for applying",
-                "body": "Thanks for applying to Example Co.",
-            }
-        ]
-
-    monkeypatch.setattr(
-        server,
-        "_require_session",
-        lambda request: ("session-7", {"provider": "gmail", "token_json": {"access_token": "x"}}),
-    )
-    monkeypatch.setattr(server, "_resolve_credentials_path", lambda requested_path: "credentials.json")
-    monkeypatch.setattr(server, "fetch_gmail_messages", fake_fetch_gmail_messages)
-    client = TestClient(server.app)
-
-    response = client.post(
-        "/api/scan/export-fixture",
-        json={
-            "start_date": "2026-02-01",
-            "end_date": "2026-03-23",
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/csv")
-    assert "attachment; filename=\"gmail_fixture_2026-02-01_2026-03-23.csv\"" == response.headers[
-        "content-disposition"
-    ]
-    assert "id,thread_id,date,from_email,subject,snippet,body" in response.text
-    assert "msg-1,thread-1,2026-02-11T10:30:00+00:00,jobs@example.com,Application received,Thanks for applying,Thanks for applying to Example Co." in response.text

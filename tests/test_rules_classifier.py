@@ -217,13 +217,3 @@ def test_workday_sender_localpart_can_supply_company_name():
     )
     key_info = get_application_key_info(msg)
     assert key_info.company_name == "fedex"
-
-
-def test_interview_logistics_role_is_not_used_as_application_key():
-    msg = _msg(
-        "Invitation: Databricks: Recruiter Video Interview @ Wed Feb 11, 2026 4:30pm",
-        "Interview scheduled",
-        sender="michael.rooke@databricks.com",
-    )
-    key_info = get_application_key_info(msg)
-    assert key_info.role_title == ""
