@@ -160,9 +160,22 @@ def run(
             token_dir=token_dir,
             max_messages=max_messages,
             gmail_query_mode=gmail_query_mode,
-            include_body=ai_classify,
+            include_body=False,
             allow_interactive_auth=allow_interactive_auth,
         )
+        if ai_classify and raw_messages:
+            raw_messages = fetch_messages(
+                email=email,
+                start_date=start_date,
+                end_date=end_date,
+                credentials_path=str(cred_path),
+                token_dir=token_dir,
+                max_messages=max_messages,
+                gmail_query_mode=gmail_query_mode,
+                include_body=True,
+                message_ids=[str(m.get("id", "")) for m in raw_messages if str(m.get("id", ""))],
+                allow_interactive_auth=allow_interactive_auth,
+            )
     elif source == "outlook":
         raw_messages = fetch_outlook_messages(
             email=email,
@@ -170,8 +183,18 @@ def run(
             end_date=end_date,
             token_dir=token_dir,
             max_messages=max_messages,
-            include_body=ai_classify,
+            include_body=False,
         )
+        if ai_classify and raw_messages:
+            raw_messages = fetch_outlook_messages(
+                email=email,
+                start_date=start_date,
+                end_date=end_date,
+                token_dir=token_dir,
+                max_messages=max_messages,
+                include_body=True,
+                message_ids=[str(m.get("id", "")) for m in raw_messages if str(m.get("id", ""))],
+            )
     elif source == "sample":
         raw_messages = load_sample_messages(start_date, end_date)
     elif source == "csv":

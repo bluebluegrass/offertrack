@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import email.utils
 import html
 import re
@@ -13,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
-MESSAGE_FETCH_MAX_WORKERS = 5
 MESSAGE_FETCH_RETRIES = 3
 MESSAGE_FETCH_RETRY_BASE_SLEEP_SEC = 0.2
 
@@ -155,28 +153,6 @@ def _extract_body_text(payload: dict[str, Any]) -> str:
         return "\n".join(html_candidates).strip()
     return _decode_b64url(body_data).strip()
 
-
-def _fetch_many_in_order(
-    message_ids: list[str],
-    fetch_one,
-    *,
-    max_workers: int = MESSAGE_FETCH_MAX_WORKERS,
-) -> list[dict[str, Any]]:
-    if not message_ids:
-        return []
-    if len(message_ids) == 1:
-        return [fetch_one(message_ids[0])]
-
-    workers = max(1, min(max_workers, len(message_ids)))
-    by_id: dict[str, dict[str, Any]] = {}
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        future_to_id = {executor.submit(fetch_one, message_id): message_id for message_id in message_ids}
-        for future in as_completed(future_to_id):
-            message_id = future_to_id[future]
-            by_id[message_id] = future.result()
-    return [by_id[message_id] for message_id in message_ids if message_id in by_id]
-
-
 def _load_gmail_service(credentials_path: Path, token_path: Path, *, allow_interactive_auth: bool) -> Any:
     try:
         from google.auth.transport.requests import Request
@@ -293,7 +269,7 @@ def fetch_messages(
         }
 
     if message_ids:
-        return _fetch_many_in_order(message_ids[:max_messages], fetch_one)
+        return [fetch_one(message_id) for message_id in message_ids[:max_messages]]
 
     date_query = _build_query(start_date, end_date)
     if gmail_query_mode == "strict":

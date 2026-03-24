@@ -1,5 +1,4 @@
 from datetime import date
-import time
 
 from skills.job_tracker.sources.gmail_readonly import fetch_messages
 
@@ -9,9 +8,6 @@ class _FakeExecute:
         self._payload = payload
 
     def execute(self):
-        delay = self._payload.get("_delay", 0)
-        if delay:
-            time.sleep(delay)
         return self._payload
 
 
@@ -63,7 +59,6 @@ def test_fetch_messages_by_ids_keeps_input_order_for_gmail(monkeypatch, tmp_path
                 ],
                 "body": {},
             },
-            "_delay": 0.05,
         },
         "m2": {
             "id": "m2",
@@ -78,7 +73,6 @@ def test_fetch_messages_by_ids_keeps_input_order_for_gmail(monkeypatch, tmp_path
                 ],
                 "body": {},
             },
-            "_delay": 0.0,
         },
     }
 
@@ -86,7 +80,6 @@ def test_fetch_messages_by_ids_keeps_input_order_for_gmail(monkeypatch, tmp_path
         "skills.job_tracker.sources.gmail_readonly._load_gmail_service",
         lambda *args, **kwargs: _FakeService(payloads),
     )
-    monkeypatch.setattr("skills.job_tracker.sources.gmail_readonly.MESSAGE_FETCH_MAX_WORKERS", 2)
     monkeypatch.setattr("skills.job_tracker.sources.gmail_readonly.MESSAGE_FETCH_RETRY_BASE_SLEEP_SEC", 0.0)
 
     rows = fetch_messages(
