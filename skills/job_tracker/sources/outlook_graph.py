@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import html
 import json
 import os
@@ -17,6 +18,9 @@ from urllib.request import urlopen
 
 SCOPES = ["openid", "profile", "email", "offline_access", "Mail.Read"]
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
+MESSAGE_FETCH_MAX_WORKERS = 5
+MESSAGE_FETCH_RETRIES = 3
+MESSAGE_FETCH_RETRY_BASE_SLEEP_SEC = 0.2
 
 
 class GraphAuthError(RuntimeError):
@@ -248,6 +252,27 @@ def _normalize_message_row(raw: dict[str, Any], *, include_body: bool) -> dict[s
     }
 
 
+def _fetch_many_in_order(
+    message_ids: list[str],
+    fetch_one,
+    *,
+    max_workers: int = MESSAGE_FETCH_MAX_WORKERS,
+) -> list[dict[str, Any]]:
+    if not message_ids:
+        return []
+    if len(message_ids) == 1:
+        return [fetch_one(message_ids[0])]
+
+    workers = max(1, min(max_workers, len(message_ids)))
+    by_id: dict[str, dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        future_to_id = {executor.submit(fetch_one, message_id): message_id for message_id in message_ids}
+        for future in as_completed(future_to_id):
+            message_id = future_to_id[future]
+            by_id[message_id] = future.result()
+    return [by_id[message_id] for message_id in message_ids if message_id in by_id]
+
+
 def _fetch_graph_messages(
     *,
     access_token: str,
@@ -285,6 +310,7 @@ def fetch_messages(
     token_dir: str,
     max_messages: int = 2000,
     include_body: bool = False,
+    message_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     if max_messages <= 0:
         return []
@@ -304,25 +330,40 @@ def fetch_messages(
 
     start_dt, end_dt = _date_bounds(start_date, end_date)
 
-    try:
-        rows = _fetch_graph_messages(
-            access_token=access_token,
+    def fetch_with_token(current_access_token: str) -> list[dict[str, Any]]:
+        if message_ids:
+            def fetch_one(message_id: str) -> dict[str, Any]:
+                url = f"{GRAPH_BASE}/me/messages/{message_id}?$select=id,conversationId,receivedDateTime,from,subject,bodyPreview"
+                if include_body:
+                    url += ",body"
+                last_exc: Exception | None = None
+                for attempt in range(1, MESSAGE_FETCH_RETRIES + 1):
+                    try:
+                        payload = _graph_get_json(url, current_access_token)
+                        return _normalize_message_row(payload, include_body=include_body)
+                    except Exception as exc:  # noqa: BLE001
+                        last_exc = exc
+                        if attempt >= MESSAGE_FETCH_RETRIES:
+                            raise
+                        time.sleep(MESSAGE_FETCH_RETRY_BASE_SLEEP_SEC * attempt)
+                raise RuntimeError(f"Failed to fetch Outlook message {message_id}") from last_exc
+
+            return _fetch_many_in_order(message_ids[:max_messages], fetch_one)
+        return _fetch_graph_messages(
+            access_token=current_access_token,
             start_dt=start_dt,
             end_dt=end_dt,
             include_body=include_body,
             max_messages=max_messages,
         )
+
+    try:
+        rows = fetch_with_token(access_token)
     except GraphAuthError:
         token_payload = _refresh_access_token(token_payload)
         token_path.parent.mkdir(parents=True, exist_ok=True)
         token_path.write_text(json.dumps(token_payload), encoding="utf-8")
-        rows = _fetch_graph_messages(
-            access_token=str(token_payload.get("access_token", "")),
-            start_dt=start_dt,
-            end_dt=end_dt,
-            include_body=include_body,
-            max_messages=max_messages,
-        )
+        rows = fetch_with_token(str(token_payload.get("access_token", "")))
 
     rows.sort(key=lambda r: r["date"])
     return rows
