@@ -53,6 +53,10 @@ def _strict_query_suffix() -> str:
         "candidate rejection",
         "journey has come to an end",
         "application has come to an end",
+        "not moving forward with your application",
+        "will not be moving forward with your application",
+        "position has been filled",
+        "selected another candidate",
     ]
     exclude_subject_keywords = [
         "newsletter",
@@ -65,10 +69,12 @@ def _strict_query_suffix() -> str:
         "security alert",
     ]
     exclude_domains = ["substack.com", "medium.com", "airbnb.com"]
+    include_sender_domains = ["appreview.gem.com"]
 
     include_subject = [f"subject:{_quote_token(k)}" for k in application_subject_keywords]
     include_anywhere = [_quote_token(k) for k in rejection_anywhere_keywords]
-    include_any = " OR ".join(include_subject + include_anywhere)
+    include_from = [f"from:{d}" for d in include_sender_domains]
+    include_any = " OR ".join(include_subject + include_anywhere + include_from)
     exclude_subject = " ".join(f"-subject:{_quote_token(k)}" for k in exclude_subject_keywords)
     exclude_from = " ".join(f"-from:{d}" for d in exclude_domains)
     special = (
@@ -153,6 +159,59 @@ def _extract_body_text(payload: dict[str, Any]) -> str:
         return "\n".join(html_candidates).strip()
     return _decode_b64url(body_data).strip()
 
+
+def _fetch_one_message(service: Any, message_id: str, *, include_body: bool) -> dict[str, Any]:
+    last_exc: Exception | None = None
+    for attempt in range(1, MESSAGE_FETCH_RETRIES + 1):
+        try:
+            if include_body:
+                raw = (
+                    service.users()
+                    .messages()
+                    .get(
+                        userId="me",
+                        id=message_id,
+                        format="full",
+                    )
+                    .execute()
+                )
+            else:
+                raw = (
+                    service.users()
+                    .messages()
+                    .get(
+                        userId="me",
+                        id=message_id,
+                        format="metadata",
+                        metadataHeaders=["From", "To", "Subject", "Date"],
+                    )
+                    .execute()
+                )
+            break
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if attempt >= MESSAGE_FETCH_RETRIES:
+                raise
+            time.sleep(MESSAGE_FETCH_RETRY_BASE_SLEEP_SEC * attempt)
+    else:
+        raise RuntimeError(f"Failed to fetch Gmail message {message_id}") from last_exc
+
+    headers = _header_map(raw.get("payload", {}).get("headers", []))
+    header_date = _parse_header_date(headers.get("date", ""))
+    occurred = _internal_ms_to_datetime(raw.get("internalDate"), header_date)
+    body = _extract_body_text(raw.get("payload", {})) if include_body else ""
+    if len(body) > 20000:
+        body = body[:20000]
+    return {
+        "id": str(raw.get("id", "")),
+        "thread_id": str(raw.get("threadId", raw.get("id", ""))),
+        "date": occurred,
+        "from_email": headers.get("from", ""),
+        "subject": headers.get("subject", ""),
+        "snippet": raw.get("snippet", ""),
+        "body": body,
+    }
+
 def _load_gmail_service(credentials_path: Path, token_path: Path, *, allow_interactive_auth: bool) -> Any:
     try:
         from google.auth.transport.requests import Request
@@ -216,60 +275,8 @@ def fetch_messages(
     service = _load_gmail_service(credentials, token_path, allow_interactive_auth=allow_interactive_auth)
     out: list[dict[str, Any]] = []
 
-    def fetch_one(message_id: str) -> dict[str, Any]:
-        last_exc: Exception | None = None
-        for attempt in range(1, MESSAGE_FETCH_RETRIES + 1):
-            try:
-                if include_body:
-                    raw = (
-                        service.users()
-                        .messages()
-                        .get(
-                            userId="me",
-                            id=message_id,
-                            format="full",
-                        )
-                        .execute()
-                    )
-                else:
-                    raw = (
-                        service.users()
-                        .messages()
-                        .get(
-                            userId="me",
-                            id=message_id,
-                            format="metadata",
-                            metadataHeaders=["From", "To", "Subject", "Date"],
-                        )
-                        .execute()
-                    )
-                break
-            except Exception as exc:  # noqa: BLE001
-                last_exc = exc
-                if attempt >= MESSAGE_FETCH_RETRIES:
-                    raise
-                time.sleep(MESSAGE_FETCH_RETRY_BASE_SLEEP_SEC * attempt)
-        else:
-            raise RuntimeError(f"Failed to fetch Gmail message {message_id}") from last_exc
-
-        headers = _header_map(raw.get("payload", {}).get("headers", []))
-        header_date = _parse_header_date(headers.get("date", ""))
-        occurred = _internal_ms_to_datetime(raw.get("internalDate"), header_date)
-        body = _extract_body_text(raw.get("payload", {})) if include_body else ""
-        if len(body) > 20000:
-            body = body[:20000]
-        return {
-            "id": str(raw.get("id", "")),
-            "thread_id": str(raw.get("threadId", raw.get("id", ""))),
-            "date": occurred,
-            "from_email": headers.get("from", ""),
-            "subject": headers.get("subject", ""),
-            "snippet": raw.get("snippet", ""),
-            "body": body,
-        }
-
     if message_ids:
-        return [fetch_one(message_id) for message_id in message_ids[:max_messages]]
+        return [_fetch_one_message(service, message_id, include_body=include_body) for message_id in message_ids[:max_messages]]
 
     date_query = _build_query(start_date, end_date)
     if gmail_query_mode == "strict":
@@ -293,7 +300,7 @@ def fetch_messages(
             break
 
         for stub in stubs:
-            out.append(fetch_one(str(stub["id"])))
+            out.append(_fetch_one_message(service, str(stub["id"]), include_body=include_body))
             if len(out) >= max_messages:
                 break
 
@@ -303,3 +310,34 @@ def fetch_messages(
             break
 
     return out
+
+
+def iter_messages_by_ids(
+    *,
+    email: str | None,
+    credentials_path: str,
+    token_dir: str,
+    message_ids: list[str],
+    include_body: bool,
+    allow_interactive_auth: bool = True,
+) -> Any:
+    credentials = Path(credentials_path).expanduser().resolve()
+    if not credentials.exists():
+        raise RuntimeError(f"Credentials file not found: {credentials}")
+
+    token_candidate = Path(token_dir).expanduser()
+    if token_candidate.is_file():
+        token_path = token_candidate.resolve()
+    else:
+        email_part = safe_email(email or "me")
+        token_path = token_candidate.resolve() / f"gmail_token_{email_part}.json"
+        if not email and Path("token.json").exists():
+            token_path = Path("token.json").resolve()
+        elif not email and token_candidate.exists():
+            existing = sorted(token_candidate.glob("gmail_token_*.json"))
+            if existing:
+                token_path = existing[0].resolve()
+    service = _load_gmail_service(credentials, token_path, allow_interactive_auth=allow_interactive_auth)
+
+    for message_id in message_ids:
+        yield _fetch_one_message(service, message_id, include_body=include_body)

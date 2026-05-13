@@ -45,6 +45,22 @@ STRONG_JOB_SIGNALS = [
     "coding challenge",
 ]
 
+LINKEDIN_BIZREACH_SIGNALS = [
+    "application",
+    "applying",
+    "thanks for applying",
+    "availability",
+    "schedule",
+    "next steps",
+    "hiring manager",
+    "phone screen",
+    "assessment",
+    "offer",
+    "not moving forward",
+    "regret to inform",
+    "rejected",
+]
+
 INTERVIEW_SCHEDULE_SIGNALS = ["interview", "schedule", "availability", "phone screen", "next steps"]
 
 CALENDAR_VENDORS = {"calendly.com", "zoom.us", "teams.microsoft.com", "microsoft.com"}
@@ -78,9 +94,12 @@ def is_relevant_message(msg: NormalizedMessage) -> FirstScanDecision:
         return FirstScanDecision(False, "newsletter_digest_subject", domain)
 
     has_strong_keyword = _has_any(subject_l, STRONG_JOB_SIGNALS)
+    has_linkedin_signal = _has_any(subject_l, LINKEDIN_BIZREACH_SIGNALS)
 
-    if domain in {"linkedin.com", "bizreach.co.jp"} and not has_strong_keyword:
-        return FirstScanDecision(False, "linkedin_bizreach_without_job_signal", domain)
+    if domain in {"linkedin.com", "bizreach.co.jp"}:
+        if not has_linkedin_signal:
+            return FirstScanDecision(False, "linkedin_bizreach_without_job_signal", domain)
+        return FirstScanDecision(True, "linkedin_bizreach_with_job_signal", domain)
 
     if domain in ATS_WHITELIST:
         return FirstScanDecision(True, "ats_whitelist_domain", domain)

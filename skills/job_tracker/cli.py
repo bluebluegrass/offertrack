@@ -49,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ai-api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--ai-base-url", default="https://api.openai.com/v1")
     parser.add_argument("--ai-max-body-chars", type=int, default=7000)
+    parser.add_argument("--ai-timeout-sec", type=int, default=12)
     parser.add_argument("--relevant-emails-path", default="output/relevant_emails.csv")
     parser.add_argument("--ai-message-classification-path", default="output/ai_message_classification.csv")
     parser.add_argument("--ai-application-table-path", default="output/ai_application_table.csv")
@@ -126,6 +127,7 @@ def main() -> None:
         ai_api_key_env=args.ai_api_key_env,
         ai_base_url=args.ai_base_url,
         ai_max_body_chars=args.ai_max_body_chars,
+        ai_timeout_sec=args.ai_timeout_sec,
         relevant_emails_path=args.relevant_emails_path,
         ai_message_classification_path=args.ai_message_classification_path,
         ai_application_table_path=args.ai_application_table_path,

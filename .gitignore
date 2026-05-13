@@ -18,6 +18,18 @@ credentials.json
 token.json
 *.token.json
 .tokens/
+.tokens.bak*/
+
+# Runtime cache
+.cache/
+
+# Local development only
+tests/
+
+# Local planning docs
+TASKS.md
+DEPLOY_RENDER_GODADDY.md
+docs/MIGRATE_RENDER_TO_COOLIFY.md
 
 # Runtime outputs
 output/*

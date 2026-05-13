@@ -6,10 +6,12 @@ import re
 import json
 import random
 import csv
+import sys
 from collections import Counter
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
+from time import perf_counter
 from typing import Literal, Optional
 
 from .classifiers.rules import classify_message_with_meta, get_application_key_info, normalize_message
@@ -21,10 +23,12 @@ from .application_summary import (
     write_application_summary_csv,
 )
 from .ai_classifier import (
+    DEFAULT_CLASSIFICATION_CACHE_PATH,
     build_ai_console_summary,
     build_ai_result_summary,
     build_application_rows,
     classify_messages_with_llm,
+    classify_messages_with_llm_streaming,
     write_ai_application_table_csv,
     write_ai_message_classification_csv,
     write_ai_result_summary_json,
@@ -38,7 +42,7 @@ from .reporting.reconcile import build_reconcile_console_summary, write_reconcil
 from .reporting.rule_hit_report import DecisionRow, build_rule_hit_report, write_rule_hit_report
 from .sankey import render_ai_sankey, render_sankey
 from .sources.csv_source import load_csv_messages
-from .sources.gmail_readonly import fetch_messages
+from .sources.gmail_readonly import fetch_messages, iter_messages_by_ids
 from .sources.outlook_graph import fetch_messages as fetch_outlook_messages
 from .sources.sample_source import load_sample_messages
 from .types import Event, SkillRunResult
@@ -100,6 +104,42 @@ def _save_audit_csv(path: Path, rows: list[dict[str, str]]) -> None:
         writer.writerows(rows)
 
 
+def _emit_ai_timing(timing: dict[str, object]) -> None:
+    # Timing semantics:
+    # - metadata_fetch_time_s: initial metadata/stub fetch only.
+    # - body_fetch_time_s: full duration of the body-fetch stage. In Gmail streaming mode,
+    #   this overlaps with LLM classification and must not be added to llm_classify_total_time_s.
+    # - llm_classify_total_time_s: wall-clock duration of the classify stage, not a sum of per-call latencies.
+    # - fetch_classify_overlap_s: estimated portion of body-fetch time that overlapped classify work.
+    # - total_pipeline_wall_time_s: authoritative end-to-end runtime for the whole pipeline.
+    # - llm_avg_time_per_call_s: derived wall-clock classify time divided by submitted LLM attempts.
+    #   Under concurrency this is not the same as the mean per-call latency.
+    payload = {
+        "time_to_first_body_s": float(timing.get("time_to_first_body_s", 0.0)),
+        "time_to_first_classify_submit_s": float(timing.get("time_to_first_classify_submit_s", 0.0)),
+        "total_pipeline_wall_time_s": float(timing.get("total_pipeline_wall_time_s", 0.0)),
+        "metadata_fetch_time_s": float(timing.get("metadata_fetch_time_s", 0.0)),
+        "body_fetch_time_s": float(timing.get("body_fetch_time_s", 0.0)),
+        "candidate_count": int(timing.get("candidate_count", 0)),
+        "skipped_by_prefilter": int(timing.get("skipped_by_prefilter", 0)),
+        "llm_cache_hits": int(timing.get("llm_cache_hits", 0)),
+        "llm_cache_misses": int(timing.get("llm_cache_misses", 0)),
+        "llm_concurrency_cap": int(timing.get("llm_concurrency_cap", 0)),
+        "llm_classify_total_time_s": float(timing.get("llm_classify_total_time_s", 0.0)),
+        "llm_calls_count": int(timing.get("llm_calls_count", 0)),
+        "llm_avg_time_per_call_s": float(timing.get("llm_avg_time_per_call_s", 0.0)),
+        "llm_p50_time_s": float(timing.get("llm_p50_time_s", 0.0)),
+        "llm_p95_time_s": float(timing.get("llm_p95_time_s", 0.0)),
+        "llm_max_time_s": float(timing.get("llm_max_time_s", 0.0)),
+        "fetch_classify_overlap_s": float(timing.get("fetch_classify_overlap_s", 0.0)),
+        "timeout_count": int(timing.get("timeout_count", 0)),
+        "timeout_retry_exhausted_count": int(timing.get("timeout_retry_exhausted_count", 0)),
+        "fallback_count": int(timing.get("fallback_count", 0)),
+        "token_usage_total": int(timing.get("token_usage_total", 0)),
+    }
+    print(json.dumps(payload, sort_keys=True), file=sys.stderr)
+
+
 def run(
     source: Literal["gmail", "outlook", "sample", "csv"],
     start: Optional[str],
@@ -132,6 +172,8 @@ def run(
     ai_api_key_env: str = "OPENAI_API_KEY",
     ai_base_url: str = "https://api.openai.com/v1",
     ai_max_body_chars: int = 7000,
+    ai_timeout_sec: int = 12,
+    ai_cache_path: str | None = DEFAULT_CLASSIFICATION_CACHE_PATH,
     relevant_emails_path: str = "output/relevant_emails.csv",
     ai_message_classification_path: str = "output/ai_message_classification.csv",
     ai_application_table_path: str = "output/ai_application_table.csv",
@@ -148,10 +190,37 @@ def run(
     if max_messages > 5000:
         raise ValueError("max_messages cap is 5000")
 
+    ai_timing: dict[str, object] = {
+        "time_to_first_body_s": 0.0,
+        "time_to_first_classify_submit_s": 0.0,
+        "total_pipeline_wall_time_s": 0.0,
+        "metadata_fetch_time_s": 0.0,
+        "body_fetch_time_s": 0.0,
+        "candidate_count": 0,
+        "skipped_by_prefilter": 0,
+        "llm_cache_hits": 0,
+        "llm_cache_misses": 0,
+        "llm_concurrency_cap": 0,
+        "llm_classify_total_time_s": 0.0,
+        "llm_calls_count": 0,
+        "llm_avg_time_per_call_s": 0.0,
+        "llm_p50_time_s": 0.0,
+        "llm_p95_time_s": 0.0,
+        "llm_max_time_s": 0.0,
+        "timeout_count": 0,
+        "timeout_retry_exhausted_count": 0,
+        "fallback_count": 0,
+        "token_usage_total": 0,
+    }
+    pipeline_started_at = perf_counter()
+    ai_timing["_pipeline_started_at"] = pipeline_started_at
+    streaming_ai_msg_rows: list[dict[str, str]] | None = None
+    streaming_normalized_all: list = []
     if source == "gmail":
         cred_path = Path(credentials_path).expanduser().resolve()
         if not cred_path.exists():
             raise ValueError(f"credentials.json missing: {cred_path}")
+        metadata_started = perf_counter()
         raw_messages = fetch_messages(
             email=email,
             start_date=start_date,
@@ -163,20 +232,46 @@ def run(
             include_body=False,
             allow_interactive_auth=allow_interactive_auth,
         )
+        ai_timing["metadata_fetch_time_s"] = perf_counter() - metadata_started
         if ai_classify and raw_messages:
-            raw_messages = fetch_messages(
-                email=email,
-                start_date=start_date,
-                end_date=end_date,
-                credentials_path=str(cred_path),
-                token_dir=token_dir,
-                max_messages=max_messages,
-                gmail_query_mode=gmail_query_mode,
-                include_body=True,
-                message_ids=[str(m.get("id", "")) for m in raw_messages if str(m.get("id", ""))],
-                allow_interactive_auth=allow_interactive_auth,
+            body_started = perf_counter()
+            body_messages: list[dict[str, object]] = []
+            normalized_stream: list = []
+            first_body_seen = False
+
+            def _iter_normalized_bodies():
+                nonlocal first_body_seen
+                for raw in iter_messages_by_ids(
+                    email=email,
+                    credentials_path=str(cred_path),
+                    token_dir=token_dir,
+                    message_ids=[str(m.get("id", "")) for m in raw_messages if str(m.get("id", ""))][:max_messages],
+                    include_body=True,
+                    allow_interactive_auth=allow_interactive_auth,
+                ):
+                    if not first_body_seen:
+                        ai_timing["time_to_first_body_s"] = perf_counter() - pipeline_started_at
+                        first_body_seen = True
+                    body_messages.append(raw)
+                    normalized_msg = normalize_message(raw)
+                    normalized_stream.append(normalized_msg)
+                    yield normalized_msg
+
+            streaming_ai_msg_rows = classify_messages_with_llm_streaming(
+                messages=_iter_normalized_bodies(),
+                model=ai_model,
+                api_key_env=ai_api_key_env,
+                base_url=ai_base_url,
+                max_body_chars=ai_max_body_chars,
+                timeout_sec=ai_timeout_sec,
+                timing=ai_timing,
+                cache_path=ai_cache_path,
             )
+            raw_messages = body_messages
+            streaming_normalized_all = normalized_stream
+            ai_timing["body_fetch_time_s"] = perf_counter() - body_started
     elif source == "outlook":
+        metadata_started = perf_counter()
         raw_messages = fetch_outlook_messages(
             email=email,
             start_date=start_date,
@@ -185,7 +280,9 @@ def run(
             max_messages=max_messages,
             include_body=False,
         )
+        ai_timing["metadata_fetch_time_s"] = perf_counter() - metadata_started
         if ai_classify and raw_messages:
+            body_started = perf_counter()
             raw_messages = fetch_outlook_messages(
                 email=email,
                 start_date=start_date,
@@ -195,16 +292,21 @@ def run(
                 include_body=True,
                 message_ids=[str(m.get("id", "")) for m in raw_messages if str(m.get("id", ""))],
             )
+            ai_timing["body_fetch_time_s"] = perf_counter() - body_started
     elif source == "sample":
+        metadata_started = perf_counter()
         raw_messages = load_sample_messages(start_date, end_date)
+        ai_timing["metadata_fetch_time_s"] = perf_counter() - metadata_started
     elif source == "csv":
         if not csv_path:
             raise ValueError("csv_path is required for source='csv'")
+        metadata_started = perf_counter()
         raw_messages = load_csv_messages(csv_path, start_date, end_date)
+        ai_timing["metadata_fetch_time_s"] = perf_counter() - metadata_started
     else:
         raise ValueError(f"Unsupported source: {source}")
 
-    normalized_all = [normalize_message(raw) for raw in raw_messages]
+    normalized_all = streaming_normalized_all if streaming_normalized_all else [normalize_message(raw) for raw in raw_messages]
     normalized_all.sort(key=lambda m: m.date)
     normalized, first_scan_rows = apply_first_scan_filter(normalized_all)
     normalized.sort(key=lambda m: m.date)
@@ -457,12 +559,15 @@ def run(
         # AI path classifies the full fetched set so first-scan does not hide late-stage outcomes.
         ai_input_messages = normalized_all
         relevant_csv = write_relevant_emails_csv(relevant_emails_path, ai_input_messages)
-        ai_msg_rows = classify_messages_with_llm(
+        ai_msg_rows = streaming_ai_msg_rows if streaming_ai_msg_rows is not None else classify_messages_with_llm(
             messages=ai_input_messages,
             model=ai_model,
             api_key_env=ai_api_key_env,
             base_url=ai_base_url,
             max_body_chars=ai_max_body_chars,
+            timeout_sec=ai_timeout_sec,
+            timing=ai_timing,
+            cache_path=ai_cache_path,
         )
         ai_msg_csv = write_ai_message_classification_csv(ai_message_classification_path, ai_msg_rows)
         ai_app_rows = build_application_rows(ai_msg_rows)
@@ -477,6 +582,11 @@ def run(
         result.artifacts["ai_sankey_png_path"] = ai_sankey_png
         for line in build_ai_console_summary(ai_summary):
             print(line)
+        ai_timing["total_pipeline_wall_time_s"] = perf_counter() - pipeline_started_at
+        body_window_end = float(ai_timing.get("metadata_fetch_time_s", 0.0)) + float(ai_timing.get("body_fetch_time_s", 0.0))
+        first_submit = float(ai_timing.get("time_to_first_classify_submit_s", 0.0))
+        ai_timing["fetch_classify_overlap_s"] = max(0.0, body_window_end - first_submit) if first_submit else 0.0
+        _emit_ai_timing(ai_timing)
 
     if not dry_run:
         _save_metrics_json(metrics_path, result)
@@ -597,6 +707,8 @@ def run_job_tracker(params: object) -> SkillRunResult:
         ai_api_key_env=getattr(params, "ai_api_key_env", "OPENAI_API_KEY"),
         ai_base_url=getattr(params, "ai_base_url", "https://api.openai.com/v1"),
         ai_max_body_chars=getattr(params, "ai_max_body_chars", 7000),
+        ai_timeout_sec=getattr(params, "ai_timeout_sec", 12),
+        ai_cache_path=getattr(params, "ai_cache_path", DEFAULT_CLASSIFICATION_CACHE_PATH),
         relevant_emails_path=getattr(params, "relevant_emails_path", "output/relevant_emails.csv"),
         ai_message_classification_path=getattr(params, "ai_message_classification_path", "output/ai_message_classification.csv"),
         ai_application_table_path=getattr(params, "ai_application_table_path", "output/ai_application_table.csv"),
